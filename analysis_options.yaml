@@ -1,0 +1,19 @@
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    - always_declare_return_types
+    - avoid_print
+    - cancel_subscriptions
+    - close_sinks
+    - prefer_const_constructors
+    - prefer_final_fields
+    - unawaited_futures
+    - use_super_parameters
+
+analyzer:
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+  errors:
+    invalid_annotation_target: ignore
