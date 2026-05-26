@@ -19,7 +19,7 @@ Flutter приложение для Android 12–14.
 flutter pub get
 flutter run
 ```
-
+ 
 ## Требования Android
 
 | Параметр | Значение |
