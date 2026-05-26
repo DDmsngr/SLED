@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../../core/utils/date_formatter.dart';
 import '../../providers/export_provider.dart';
@@ -56,7 +54,6 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ── Превью ─────────────────────────────────────────
                 Text('Превью',
                     style: Theme.of(context).textTheme.titleMedium),
                 const Gap(8),
@@ -82,7 +79,6 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                   const Gap(16),
                 ],
 
-                // ── Сохранить PNG ──────────────────────────────────
                 FilledButton.icon(
                   onPressed: exportState.isExporting
                       ? null
@@ -92,23 +88,10 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                   label: const Text('Сохранить след (PNG)'),
                 ),
                 const Gap(8),
-
-                // ── Поделиться маршрутом ───────────────────────────
                 FilledButton.icon(
                   onPressed: exportState.isExporting
                       ? null
-                      : () async {
-                          final path =
-                              await exportNotifier.exportGpx(session);
-                          await Share.shareXFiles(
-                            [XFile(path)],
-                            subject: session.title,
-                            text: '${session.title}\n'
-                                '${formatDistance(session.distanceMeters)} · '
-                                '${formatDuration(session.duration)}\n'
-                                'Записано в SLED',
-                          );
-                        },
+                      : () => exportNotifier.shareRoute(session),
                   icon: const Icon(Icons.share),
                   label: const Text('Поделиться маршрутом'),
                   style: FilledButton.styleFrom(
@@ -117,17 +100,12 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                   ),
                 ),
                 const Gap(8),
-
-                // ── MP4 — скоро ─────────────────────────────────────
                 OutlinedButton.icon(
                   onPressed: () => _showVideoComingSoon(context),
                   icon: const Icon(Icons.videocam_outlined),
                   label: const Text('Видео-след — скоро'),
                 ),
-
                 const Gap(16),
-
-                // ── Инфо ────────────────────────────────────────────
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(12),
@@ -146,10 +124,8 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                         ]),
                         const Gap(4),
                         Text('Дата: ${formatDateTime(session.startedAt)}'),
-                        Text(
-                            'Дистанция: ${formatDistance(session.distanceMeters)}'),
-                        Text(
-                            'Время: ${formatDuration(session.duration)}'),
+                        Text('Дистанция: ${formatDistance(session.distanceMeters)}'),
+                        Text('Время: ${formatDuration(session.duration)}'),
                         Text('Фото: ${session.photos.length} шт.'),
                         Text('Точек GPS: ${session.points.length}'),
                       ],
@@ -171,8 +147,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
         title: const Text('Видео-след'),
         content: const Text(
           'Экспорт видео появится в следующем обновлении.\n\n'
-          'Пока сохраните PNG-коллаж или поделитесь '
-          'GPX-маршрутом — он открывается в OsmAnd и Strava.',
+          'Пока сохраните PNG-коллаж или поделитесь маршрутом.',
         ),
         actions: [
           FilledButton(

@@ -1,9 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gps_photo_tracker/domain/domain.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:sled/domain/domain.dart';
 
-/// Минимальный smoke-тест: проверяем, что TrackSession.copyWith работает
-/// без реального Hive (полный интеграционный тест требует runApp).
 void main() {
   group('SessionRepository smoke', () {
     test('TrackSession.copyWith сохраняет id', () {
@@ -19,7 +17,6 @@ void main() {
       expect(updated.id, 'abc');
       expect(updated.distanceMeters, 100);
     });
-
     test('PhotoMarker хранит координаты', () {
       final marker = PhotoMarker(
         id: 'photo-1',

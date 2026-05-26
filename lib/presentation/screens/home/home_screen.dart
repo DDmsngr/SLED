@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -35,7 +37,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, ) {
     final sessionsAsync = ref.watch(sessionsProvider);
     final isTracking = ref.watch(trackingProvider).isTracking;
     final theme = Theme.of(context);
@@ -44,7 +46,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       appBar: AppBar(
         title: GestureDetector(
           onTap: _onLogoTap,
-          child: _SledLogo(compact: true),
+          child: const _SledLogo(compact: true),
         ),
         actions: [
           IconButton(
@@ -118,13 +120,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       builder: (_) => const _ActivityPickerSheet(),
     );
     if (type != null && context.mounted) {
-      ref.read(trackingProvider.notifier).startTracking(type);
+      // unawaited — startTracking запускается в фоне, не блокируем UI
+      unawaited(ref.read(trackingProvider.notifier).startTracking(type));
       context.push('/tracking');
     }
   }
 }
 
-// ── SLED Logo Widget ──────────────────────────────────────────────────────────
 class _SledLogo extends StatelessWidget {
   const _SledLogo({this.compact = false});
   final bool compact;
@@ -168,7 +170,6 @@ class _SledLogo extends StatelessWidget {
   }
 }
 
-// ── Empty State ───────────────────────────────────────────────────────────────
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
 
@@ -192,7 +193,6 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-// ── Activity Picker ───────────────────────────────────────────────────────────
 class _ActivityPickerSheet extends StatelessWidget {
   const _ActivityPickerSheet();
 
@@ -233,7 +233,6 @@ class _ActivityPickerSheet extends StatelessWidget {
   }
 }
 
-// ── Session Card ──────────────────────────────────────────────────────────────
 class _SessionCard extends ConsumerWidget {
   const _SessionCard({required this.session});
   final TrackSession session;

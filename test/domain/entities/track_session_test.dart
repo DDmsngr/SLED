@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:gps_photo_tracker/domain/domain.dart';
+import 'package:sled/domain/domain.dart';
 
 void main() {
   group('TrackSession', () {
     final start = DateTime(2025, 6, 1, 10, 0, 0);
-    final end = DateTime(2025, 6, 1, 11, 30, 0);
+    final end   = DateTime(2025, 6, 1, 11, 30, 0);
 
     final session = TrackSession(
       id: 'test-id',
@@ -20,14 +20,12 @@ void main() {
     test('duration вычисляется корректно', () {
       expect(session.duration, const Duration(hours: 1, minutes: 30));
     });
-
     test('copyWith обновляет только нужные поля', () {
       final updated = session.copyWith(distanceMeters: 9999);
       expect(updated.id, session.id);
       expect(updated.distanceMeters, 9999);
       expect(updated.title, session.title);
     });
-
     test('равенство по id', () {
       final duplicate = session.copyWith(title: 'Другое название');
       expect(session, duplicate);

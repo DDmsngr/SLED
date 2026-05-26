@@ -1,18 +1,16 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_gallery_saver/image_gallery_saver.dart';
+import 'package:gal/gal.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-import 'package:ffmpeg_kit_flutter_min/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_min/return_code.dart';
 
 import '../../core/constants/app_constants.dart';
-import '../../core/errors/app_error.dart';
+import '../../core/utils/date_formatter.dart';
 import '../../domain/entities/track_session.dart';
 
 class ExportState {
@@ -57,33 +55,32 @@ class ExportNotifier extends StateNotifier<ExportState> {
           await boundary.toImage(pixelRatio: AppConstants.collagePixelRatio);
       state = state.copyWith(progress: 0.5);
 
-      final byteData =
-          await image.toByteData(format: ui.ImageByteFormat.png);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       final bytes = byteData!.buffer.asUint8List();
-      state = state.copyWith(progress: 0.8);
+      state = state.copyWith(progress: 0.75);
 
-      final result = await ImageGallerySaver.saveImage(
-        bytes,
-        quality: 95,
-        name: 'track_collage_${session.id.substring(0, 8)}',
-      );
+      final tmpDir = await getTemporaryDirectory();
+      final name = 'sled_${session.id.substring(0, 8)}.png';
+      final tmpFile = File(p.join(tmpDir.path, name));
+      await tmpFile.writeAsBytes(bytes);
+
+      await Gal.putImage(tmpFile.path, album: 'SLED');
+      await tmpFile.delete();
+
       state = state.copyWith(
         isExporting: false,
         progress: 1.0,
-        lastSavedPath: result['filePath'] as String?,
+        lastSavedPath: name,
       );
     } catch (e) {
-      state = state.copyWith(
-        isExporting: false,
-        error: 'Ошибка экспорта коллажа: $e',
-      );
+      state = state.copyWith(isExporting: false, error: 'Ошибка экспорта: $e');
     }
   }
 
   Future<String> exportGpx(TrackSession session) async {
     final buf = StringBuffer()
       ..writeln('<?xml version="1.0" encoding="UTF-8"?>')
-      ..writeln('<gpx version="1.1" creator="GPS Трекер">')
+      ..writeln('<gpx version="1.1" creator="SLED">')
       ..writeln('  <trk><name>${session.title}</name><trkseg>');
 
     for (final pt in session.points) {
@@ -97,62 +94,25 @@ class ExportNotifier extends StateNotifier<ExportState> {
     buf.writeln('  </trkseg></trk></gpx>');
 
     final dir = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dir.path, 'export_${session.id}.gpx'));
+    final file = File(p.join(dir.path, 'sled_${session.id}.gpx'));
     await file.writeAsString(buf.toString());
     return file.path;
   }
 
-  Future<void> exportVideo(
-    TrackSession session,
-    List<Uint8List> frames,
-  ) async {
-    if (frames.isEmpty) {
-      state = state.copyWith(error: 'Нет кадров для видео');
-      return;
-    }
-    state = state.copyWith(isExporting: true, progress: 0.05);
-
+  Future<void> shareRoute(TrackSession session) async {
+    state = state.copyWith(isExporting: true, progress: 0.3);
     try {
-      final tmpDir = await getTemporaryDirectory();
-      final framesDir =
-          Directory(p.join(tmpDir.path, 'video_frames_${session.id}'));
-      await framesDir.create(recursive: true);
-
-      for (int i = 0; i < frames.length; i++) {
-        final file = File(p.join(
-            framesDir.path, 'frame_${i.toString().padLeft(4, '0')}.png'));
-        await file.writeAsBytes(frames[i]);
-        state = state.copyWith(progress: 0.05 + 0.5 * (i / frames.length));
-      }
-
-      final outputPath =
-          p.join(tmpDir.path, 'track_${session.id.substring(0, 8)}.mp4');
-
-      final cmd = '-y -framerate ${AppConstants.videoFps} '
-          '-i ${framesDir.path}/frame_%04d.png '
-          '-c:v libx264 -b:v ${AppConstants.videoBitrate} '
-          '-vf scale=1080:-2 -pix_fmt yuv420p '
-          '$outputPath';
-
-      state = state.copyWith(progress: 0.6);
-
-      final ffSession = await FFmpegKit.execute(cmd);
-      final rc = await ffSession.getReturnCode();
-
-      if (!ReturnCode.isSuccess(rc)) {
-        final logs = await ffSession.getAllLogsAsString();
-        throw ExportError('FFmpeg error:\n$logs');
-      }
-
-      state = state.copyWith(progress: 0.9);
-      await ImageGallerySaver.saveFile(outputPath);
-      await framesDir.delete(recursive: true);
-
-      state = state.copyWith(
-        isExporting: false,
-        progress: 1.0,
-        lastSavedPath: outputPath,
+      final path = await exportGpx(session);
+      state = state.copyWith(progress: 0.8);
+      await Share.shareXFiles(
+        [XFile(path)],
+        subject: session.title,
+        text: '${session.title}\n'
+            '${formatDistance(session.distanceMeters)} · '
+            '${formatDuration(session.duration)}\n'
+            'Записано в SLED',
       );
+      state = state.copyWith(isExporting: false, progress: 1.0);
     } catch (e) {
       state = state.copyWith(isExporting: false, error: e.toString());
     }
