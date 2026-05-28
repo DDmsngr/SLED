@@ -11,3 +11,7 @@
 
 # Keep enums
 -keepclassmembers enum * { *; }
+
+# Play Core (referenced by Flutter embedding, not used directly)
+-dontwarn com.google.android.play.core.**
+-keep class com.google.android.play.core.** { *; }
