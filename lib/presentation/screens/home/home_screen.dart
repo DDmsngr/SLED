@@ -61,7 +61,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // Импорт / инфо
           PopupMenuButton<String>(
             onSelected: (v) {
-              if (v == 'import') _importGpx(context);
+              if (v == 'import') unawaited(_importGpx(context));
               if (v == 'about') _showAbout(context);
             },
             itemBuilder: (_) => const [
@@ -176,15 +176,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       await ref.read(sessionRepositoryProvider).saveSession(session);
       ref.invalidate(sessionsProvider);
 
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Импортировано: ${session.title}')),
       );
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка импорта: $e')),
-        );
-      }
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка импорта: $e')),
+      );
     }
   }
 

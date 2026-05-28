@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/utils/date_formatter.dart';
 import '../../../domain/entities/activity_type.dart';
+import '../../../domain/entities/track_session.dart';
 import '../../providers/stats_provider.dart';
 
 class StatsScreen extends ConsumerWidget {

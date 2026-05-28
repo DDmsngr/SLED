@@ -15,5 +15,6 @@ analyzer:
   exclude:
     - "**/*.g.dart"
     - "**/*.freezed.dart"
+    - "sled_v2/**"
   errors:
     invalid_annotation_target: ignore

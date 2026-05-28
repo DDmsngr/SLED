@@ -14,7 +14,7 @@ import '../../domain/entities/activity_type.dart';
 class GpxImportService {
   const GpxImportService();
 
-  static final _uuid = const Uuid();
+  static const _uuid = Uuid();
 
   Future<TrackSession?> importFromFile(String filePath) async {
     final file = File(filePath);
