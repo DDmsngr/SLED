@@ -147,7 +147,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       unawaited(ref
           .read(trackingProvider.notifier)
           .startTracking(result.activityType, profile: result.profile));
-      context.push('/tracking');
+      unawaited(context.push('/tracking'));
     }
   }
 

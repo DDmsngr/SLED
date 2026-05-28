@@ -38,7 +38,7 @@ class StatsScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(16),
             children: [
               // ── Итого ────────────────────────────────────────────────────
-              _SectionTitle('Итого'),
+              const _SectionTitle('Итого'),
               const Gap(8),
               Row(children: [
                 Expanded(
@@ -84,14 +84,14 @@ class StatsScreen extends ConsumerWidget {
 
               // ── Активность по неделям ─────────────────────────────────
               const Gap(20),
-              _SectionTitle('Активность по неделям'),
+              const _SectionTitle('Активность по неделям'),
               const Gap(8),
               _WeeklyChart(distances: stats.weeklyDistances),
 
               // ── По типам активности ───────────────────────────────────
               if (stats.countByType.isNotEmpty) ...[
                 const Gap(20),
-                _SectionTitle('По типу активности'),
+                const _SectionTitle('По типу активности'),
                 const Gap(8),
                 ...stats.countByType.entries
                     .toList()
@@ -105,7 +105,7 @@ class StatsScreen extends ConsumerWidget {
 
               // ── Рекорды ───────────────────────────────────────────────
               const Gap(20),
-              _SectionTitle('Рекорды'),
+              const _SectionTitle('Рекорды'),
               const Gap(8),
               if (stats.longestSession != null)
                 _RecordCard(
