@@ -1,0 +1,11 @@
+# Чтобы сгенерировать иконки из своего PNG:
+#   1. Положите icon.png (1024x1024) в assets/images/
+#   2. Раскомментируйте строки ниже
+#   3. dart run flutter_launcher_icons
+
+# flutter_launcher_icons:
+#   android: true
+#   ios: false
+#   image_path: "assets/images/icon.png"
+#   adaptive_icon_background: "#1A73E8"
+#   adaptive_icon_foreground: "assets/images/icon_foreground.png"
