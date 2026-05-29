@@ -8,8 +8,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../../../core/constants/app_constants.dart';
 import '../../../core/services/app_logger.dart';
+import '../../../core/services/native_config.dart';
 import '../../../data/datasources/isar_datasource.dart';
 import '../../providers/poi_provider.dart';
 import '../../providers/session_provider.dart';
@@ -41,11 +41,17 @@ class DevScreen extends ConsumerWidget {
         padding: const EdgeInsets.all(16),
         children: [
           // ── Конфигурация ────────────────────────────────────────────
-          _Section(title: 'Конфигурация', children: [
-            _Row('Yandex API key',
-                '${AppConstants.yandexApiKey.substring(0, 8)}... '
-                '(${AppConstants.yandexApiKey == 'test_api_key' ? '⚠️ TEST KEY' : '✅ real key'})'),
-          ]),
+          FutureBuilder<String>(
+            future: NativeConfig.yandexKeyPrefix(),
+            builder: (context, snap) {
+              final prefix = snap.data ?? '...';
+              final isTest = prefix == 'test_api' || prefix.startsWith('test');
+              return _Section(title: 'Конфигурация', children: [
+                _Row('Yandex key (manifest)',
+                    '$prefix... ${isTest ? '⚠️ TEST KEY' : '✅ real key'}'),
+              ]);
+            },
+          ),
           const Gap(16),
 
           // ── Лог событий ─────────────────────────────────────────────
