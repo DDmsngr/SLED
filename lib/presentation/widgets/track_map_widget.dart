@@ -100,10 +100,10 @@ class _TrackMapWidgetState extends ConsumerState<TrackMapWidget> {
       if (p.longitude > maxLng) maxLng = p.longitude;
     }
     c.moveCamera(
-      CameraUpdate.newBounds(BoundingBox(
+      CameraUpdate.newGeometry(Geometry.fromBoundingBox(BoundingBox(
         southWest: LatLng(minLat, minLng).toYandex(),
         northEast: LatLng(maxLat, maxLng).toYandex(),
-      )),
+      ))),
       animation: const MapAnimation(type: MapAnimationType.smooth, duration: 0.5),
     );
   }

@@ -32,6 +32,10 @@
             android:name="flutterEmbedding"
             android:value="2"/>
 
+        <meta-data
+            android:name="com.yandex.android.sdk.MAPKIT_API_KEY"
+            android:value="${yandexMapkitApiKey}"/>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

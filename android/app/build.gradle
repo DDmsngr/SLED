@@ -13,6 +13,8 @@ if (localPropertiesFile.exists()) {
 }
 def flutterVersionCode = localProperties.getProperty('flutter.versionCode') ?: '1'
 def flutterVersionName = localProperties.getProperty('flutter.versionName') ?: '1.0'
+def yandexMapkitApiKey = System.getenv('YANDEX_MAPKIT_API_KEY') ?:
+    localProperties.getProperty('yandexMapkitApiKey') ?: 'test_api_key'
 
 android {
     namespace "com.example.sled"
@@ -26,6 +28,7 @@ android {
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         ndk { abiFilters "armeabi-v7a", "arm64-v8a" }
+        manifestPlaceholders["yandexMapkitApiKey"] = yandexMapkitApiKey
     }
 
     compileOptions {
