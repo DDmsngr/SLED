@@ -10,7 +10,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          sessionsProvider.overrideWith((_) async => []),
+          sessionsProvider.overrideWith((_) => Stream.value([])),
         ],
         child: const MaterialApp(home: HomeScreen()),
       ),
