@@ -99,7 +99,7 @@ class _TrackMapWidgetState extends ConsumerState<TrackMapWidget> {
       children: [
         TileLayer(
           urlTemplate: AppConstants.osmTileUrl,
-          tileProvider: const OfflineCachedTileProvider(),
+          tileProvider: OfflineCachedTileProvider(),
           userAgentPackageName: 'com.example.sled',
           tileBuilder: (context, tileWidget, tile) {
             final isDark = Theme.of(context).brightness == Brightness.dark;

@@ -29,6 +29,9 @@ jobs:
       - name: Generate native splash
         run: dart run flutter_native_splash:create
 
+      - name: Generate Isar schemas
+        run: dart run build_runner build --delete-conflicting-outputs
+
       - name: Analyze
         run: flutter analyze --no-fatal-infos
 

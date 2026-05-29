@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -19,7 +18,7 @@ import 'package:path_provider/path_provider.dart';
 ///
 /// Для предварительной загрузки региона используй [prefetchRegion].
 class OfflineCachedTileProvider extends TileProvider {
-  const OfflineCachedTileProvider();
+  OfflineCachedTileProvider();
 
   @override
   ImageProvider getImage(TileCoordinates coordinates, TileLayer options) {

@@ -1,4 +1,6 @@
-import 'package:geolocator/geolocator.dart';
+// hide ActivityType: geolocator_apple экспортирует своё ActivityType,
+// которое конфликтует с нашим domain-entity.
+import 'package:geolocator/geolocator.dart' hide ActivityType;
 import 'package:latlong2/latlong.dart';
 
 import '../../core/constants/app_constants.dart';

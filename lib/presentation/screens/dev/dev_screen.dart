@@ -3,15 +3,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
-import 'package:hive/hive.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../../../data/models/track_session_model.dart';
-import '../../../data/models/photo_marker_model.dart';
-import '../../providers/tracking_provider.dart';
+import '../../../data/datasources/isar_datasource.dart';
+import '../../providers/poi_provider.dart';
 import '../../providers/session_provider.dart';
+import '../../providers/tracking_provider.dart';
 
 class DevScreen extends ConsumerWidget {
   const DevScreen({super.key});
@@ -20,8 +19,7 @@ class DevScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final trackingState = ref.watch(trackingProvider);
     final sessionsAsync = ref.watch(sessionsProvider);
-    final sessionsBox = Hive.box<TrackSessionModel>('sessions');
-    final markersBox = Hive.box<PhotoMarkerModel>('markers');
+    final poisAsync = ref.watch(poisProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -32,49 +30,59 @@ class DevScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.delete_forever),
             tooltip: 'Очистить все данные',
-            onPressed: () =>
-                _confirmClear(context, ref, sessionsBox, markersBox),
+            onPressed: () => _confirmClear(context, ref),
           ),
         ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _Section(title: 'Хранилище Hive', children: [
-            _Row('Сессий в боксе', '${sessionsBox.length}'),
-            _Row('Маркеров в боксе', '${markersBox.length}'),
-            _Row('Сессий (провайдер)',
-                sessionsAsync.when(
-                  data: (s) => '${s.length}',
-                  loading: () => '...',
-                  error: (e, _) => 'Err',
-                )),
+          _Section(title: 'Хранилище Isar', children: [
+            _Row(
+              'Сессий (Isar)',
+              sessionsAsync.when(
+                data: (s) => '${s.length}',
+                loading: () => '...',
+                error: (e, _) => 'Err',
+              ),
+            ),
+            _Row(
+              'POI (Isar)',
+              poisAsync.when(
+                data: (p) => '${p.length}',
+                loading: () => '...',
+                error: (e, _) => 'Err',
+              ),
+            ),
           ]),
           const Gap(16),
           _Section(title: 'Состояние трекинга', children: [
-            _Row('isTracking', '${trackingState.isTracking}'),
-            _Row('isPaused', '${trackingState.isPaused}'),
+            _Row('status', trackingState.status.name),
             _Row('displayDuration', trackingState.displayDuration.toString()),
             _Row('currentPosition',
                 trackingState.currentPosition?.toString() ?? 'null'),
             _Row('Точек', '${trackingState.session?.points.length ?? 0}'),
-            _Row('Дистанция',
-                '${trackingState.session?.distanceMeters.toStringAsFixed(1) ?? 0} м'),
-            _Row('Активность',
-                trackingState.session?.activityType.label ?? 'нет'),
+            _Row(
+              'Дистанция',
+              '${trackingState.session?.distanceMeters.toStringAsFixed(1) ?? 0} м',
+            ),
+            _Row(
+              'Активность',
+              trackingState.session?.activityType.label ?? 'нет',
+            ),
           ]),
           const Gap(16),
           _Section(
             title: 'Все следы',
             children: sessionsAsync.when(
               data: (sessions) => sessions.isEmpty
-                  ? [const _Row('Пусто', '')]
+                  ? const [_Row('Пусто', '')]
                   : sessions
                       .map((s) => _Row(s.title,
                           '${s.points.length} pts · ${s.photos.length} фото'))
                       .toList(),
               loading: () =>
-                  [const Center(child: CircularProgressIndicator())],
+                  const [Center(child: CircularProgressIndicator())],
               error: (e, _) => [Text('$e')],
             ),
           ),
@@ -96,8 +104,8 @@ class DevScreen extends ConsumerWidget {
             ),
           const Gap(32),
           FilledButton.icon(
-            onPressed: () => _exportDumpToFile(context, ref, trackingState,
-                sessionsBox, markersBox),
+            onPressed: () =>
+                _exportDump(context, ref, trackingState, sessionsAsync),
             icon: const Icon(Icons.share),
             label: const Text('Экспортировать дамп'),
           ),
@@ -106,82 +114,17 @@ class DevScreen extends ConsumerWidget {
     );
   }
 
-  /// FIX: экспорт дампа через файл — не обрезается при передаче
-  Future<void> _exportDumpToFile(
-    BuildContext context,
-    WidgetRef ref,
-    dynamic state,
-    Box sessionsBox,
-    Box markersBox,
-  ) async {
-    final sessionsAsync = ref.read(sessionsProvider);
-    final sessions = sessionsAsync.valueOrNull ?? [];
-
-    final buf = StringBuffer();
-    buf.writeln('=== SLED Debug Dump ===');
-    buf.writeln('Дата: ${DateTime.now()}');
-    buf.writeln('Сессий в Hive: ${sessionsBox.length}');
-    buf.writeln('Маркеров в Hive: ${markersBox.length}');
-    buf.writeln('isTracking: ${state.isTracking}');
-    buf.writeln('isPaused: ${state.isPaused}');
-    buf.writeln(
-        'Точек: ${state.session?.points.length ?? 0}');
-    buf.writeln(
-        'Дистанция: ${state.session?.distanceMeters ?? 0} м');
-    buf.writeln('--- Все сессии ---');
-    for (final s in sessions) {
-      buf.writeln(
-          '  [${s.activityType.label}] ${s.title} | '
-          '${s.points.length} pts | '
-          '${s.distanceMeters.toStringAsFixed(0)} м | '
-          '${s.photos.length} фото');
-    }
-    if (state.session != null && state.session!.points.isNotEmpty) {
-      buf.writeln('--- Последние GPS точки ---');
-      for (final pt in state.session!.points.reversed.take(20)) {
-        buf.writeln(
-            '  ${pt.timestamp.toIso8601String()} | '
-            '${pt.position.latitude.toStringAsFixed(6)}, '
-            '${pt.position.longitude.toStringAsFixed(6)} | '
-            '${(pt.speedMs * 3.6).toStringAsFixed(1)} км/ч | '
-            '${pt.accuracyM.toStringAsFixed(0)} м точн');
-      }
-    }
-
-    try {
-      final dir = await getTemporaryDirectory();
-      final file = File(p.join(dir.path,
-          'sled_dump_${DateTime.now().millisecondsSinceEpoch}.txt'));
-      await file.writeAsString(buf.toString());
-
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        subject: 'SLED Debug Dump',
-      );
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _confirmClear(
-    BuildContext context,
-    WidgetRef ref,
-    Box sessionsBox,
-    Box markersBox,
-  ) async {
+  Future<void> _confirmClear(BuildContext context, WidgetRef ref) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Удалить ВСЕ данные?'),
-        content: const Text('Все следы будут удалены безвозвратно.'),
+        content: const Text('Все следы и точки будут удалены безвозвратно.'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Отмена')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(context, true),
@@ -191,9 +134,8 @@ class DevScreen extends ConsumerWidget {
       ),
     );
     if (ok == true) {
-      await sessionsBox.clear();
-      await markersBox.clear();
-      ref.invalidate(sessionsProvider);
+      final db = IsarDatasource.instance.db;
+      await db.writeTxn(() => db.clear());
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Данные удалены')),
@@ -201,7 +143,53 @@ class DevScreen extends ConsumerWidget {
       }
     }
   }
+
+  Future<void> _exportDump(
+    BuildContext context,
+    WidgetRef ref,
+    dynamic state,
+    AsyncValue sessions,
+  ) async {
+    final sessionList = sessions.valueOrNull ?? [];
+    final buf = StringBuffer();
+    buf.writeln('=== SLED Debug Dump ===');
+    buf.writeln('Дата: ${DateTime.now()}');
+    buf.writeln('status: ${state.status.name}');
+    buf.writeln('Точек: ${state.session?.points.length ?? 0}');
+    buf.writeln('Дистанция: ${state.session?.distanceMeters ?? 0} м');
+    buf.writeln('--- Все сессии ---');
+    for (final s in sessionList) {
+      buf.writeln('  [${s.activityType.label}] ${s.title} | '
+          '${s.points.length} pts | '
+          '${s.distanceMeters.toStringAsFixed(0)} м | '
+          '${s.photos.length} фото');
+    }
+    if (state.session != null && state.session!.points.isNotEmpty) {
+      buf.writeln('--- Последние GPS точки ---');
+      for (final pt in state.session!.points.reversed.take(20)) {
+        buf.writeln('  ${pt.timestamp.toIso8601String()} | '
+            '${pt.position.latitude.toStringAsFixed(6)}, '
+            '${pt.position.longitude.toStringAsFixed(6)} | '
+            '${(pt.speedMs * 3.6).toStringAsFixed(1)} км/ч | '
+            '${pt.accuracyM.toStringAsFixed(0)} м');
+      }
+    }
+    try {
+      final dir = await getTemporaryDirectory();
+      final file = File(
+          p.join(dir.path, 'sled_dump_${DateTime.now().millisecondsSinceEpoch}.txt'));
+      await file.writeAsString(buf.toString());
+      await Share.shareXFiles([XFile(file.path)], subject: 'SLED Debug Dump');
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Ошибка: $e')));
+      }
+    }
+  }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _Section extends StatelessWidget {
   const _Section({required this.title, required this.children});

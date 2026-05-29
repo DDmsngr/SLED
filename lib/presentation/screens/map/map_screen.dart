@@ -111,7 +111,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             children: [
               TileLayer(
                 urlTemplate: AppConstants.osmTileUrl,
-                tileProvider: const OfflineCachedTileProvider(),
+                tileProvider: OfflineCachedTileProvider(),
                 userAgentPackageName: 'com.example.sled',
                 tileBuilder: _darkModeTileBuilder,
               ),
@@ -197,12 +197,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         child: GestureDetector(
           onTap: () => _showPoiDetail(context, poi),
           child: Container(
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: Colors.white,
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                    color: Colors.black26, blurRadius: 4, offset: const Offset(0, 2))
+                    color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))
               ],
             ),
             child: Center(
