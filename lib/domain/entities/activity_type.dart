@@ -31,6 +31,18 @@ enum ActivityType {
         ActivityType.other        => '📍',
       };
 
+  /// Максимально допустимая скорость для физического фильтра GPS-точек.
+  double get maxSpeedKmh => switch (this) {
+        ActivityType.walk         => 15.0,
+        ActivityType.run          => 35.0,
+        ActivityType.bike         => 65.0,
+        ActivityType.rollerblades => 45.0,
+        ActivityType.car          => 200.0,
+        ActivityType.boat         => 90.0,
+        ActivityType.ski          => 110.0,
+        ActivityType.other        => 200.0,
+      };
+
   /// MET (Metabolic Equivalent of Task) для расчёта калорий.
   double get met => switch (this) {
         ActivityType.walk         => 3.5,

@@ -1,11 +1,12 @@
-# Чтобы сгенерировать иконки из своего PNG:
-#   1. Положите icon.png (1024x1024) в assets/images/
-#   2. Раскомментируйте строки ниже
-#   3. dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: false
+  image_path: "assets/images/sled_logo.png"
 
-# flutter_launcher_icons:
-#   android: true
-#   ios: false
-#   image_path: "assets/images/icon.png"
-#   adaptive_icon_background: "#1A73E8"
-#   adaptive_icon_foreground: "assets/images/icon_foreground.png"
+  # Адаптивная иконка Android 8.0+ (API 26+):
+  # foreground — сам логотип (должен содержать 25% отступ от краёв)
+  # background — заливка за логотипом
+  adaptive_icon_background: "#000000"
+  adaptive_icon_foreground: "assets/images/sled_logo.png"
+
+  min_sdk_android: 21  # Android 5.0+

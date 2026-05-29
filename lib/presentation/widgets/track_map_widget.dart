@@ -2,15 +2,19 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/tile_providers/offline_cached_tile_provider.dart';
 import '../../core/utils/date_formatter.dart';
-import '../../domain/entities/track_session.dart';
 import '../../domain/entities/photo_marker.dart';
+import '../../domain/entities/poi.dart';
+import '../../domain/entities/track_session.dart';
+import '../providers/poi_provider.dart';
 import 'photo_marker_widget.dart';
 
-class TrackMapWidget extends StatefulWidget {
+class TrackMapWidget extends ConsumerStatefulWidget {
   const TrackMapWidget({
     super.key,
     required this.session,
@@ -31,10 +35,10 @@ class TrackMapWidget extends StatefulWidget {
   final VoidCallback? onMapReady;
 
   @override
-  State<TrackMapWidget> createState() => _TrackMapWidgetState();
+  ConsumerState<TrackMapWidget> createState() => _TrackMapWidgetState();
 }
 
-class _TrackMapWidgetState extends State<TrackMapWidget> {
+class _TrackMapWidgetState extends ConsumerState<TrackMapWidget> {
   final MapController _mapController = MapController();
 
   @override
@@ -71,6 +75,8 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
     final center = widget.currentPosition ??
         (points.isNotEmpty ? points.last : const LatLng(55.751244, 37.618423));
 
+    final poisAsync = ref.watch(poisProvider);
+
     return FlutterMap(
       mapController: _mapController,
       options: MapOptions(
@@ -82,7 +88,7 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
         interactionOptions: InteractionOptions(
           flags: widget.interactive ? InteractiveFlag.all : InteractiveFlag.none,
         ),
-        onMapReady: () => widget.onMapReady?.call(),  // сигнал готовности
+        onMapReady: () => widget.onMapReady?.call(),
         onMapEvent: (event) {
           if (event is MapEventMoveStart &&
               event.source != MapEventSource.mapController) {
@@ -93,6 +99,7 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
       children: [
         TileLayer(
           urlTemplate: AppConstants.osmTileUrl,
+          tileProvider: const OfflineCachedTileProvider(),
           userAgentPackageName: 'com.example.sled',
           tileBuilder: (context, tileWidget, tile) {
             final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -107,6 +114,15 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
               child: tileWidget,
             );
           },
+        ),
+
+        // ── POI-слой — ОБЯЗАТЕЛЬНО виден в режиме «Запись следа» ─────────
+        poisAsync.when(
+          loading: () => const MarkerLayer(markers: []),
+          error: (_, __) => const MarkerLayer(markers: []),
+          data: (pois) => MarkerLayer(
+            markers: pois.map(_buildPoiMarker).toList(),
+          ),
         ),
 
         if (points.length > 1)
@@ -171,6 +187,37 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
           }).toList(),
         ),
       ],
+    );
+  }
+
+  Marker _buildPoiMarker(Poi poi) {
+    return Marker(
+      point: poi.position,
+      width: 36,
+      height: 36,
+      child: GestureDetector(
+        onTap: () => _showPoiInfo(context, poi),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
+          ),
+          child: Center(
+            child: Text(poi.type.emoji, style: const TextStyle(fontSize: 18)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showPoiInfo(BuildContext context, Poi poi) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${poi.type.emoji} ${poi.type.label}'
+            '${poi.comment != null ? ': ${poi.comment}' : ''}'),
+        duration: const Duration(seconds: 2),
+      ),
     );
   }
 

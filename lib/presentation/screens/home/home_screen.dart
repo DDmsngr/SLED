@@ -359,8 +359,8 @@ class _SledLogo extends StatelessWidget {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.route, color: color, size: 22),
-          const Gap(6),
+          Image.asset('assets/images/sled_logo.png', width: 28, height: 28),
+          const Gap(8),
           Text('SLED',
               style: TextStyle(
                   fontWeight: FontWeight.w900,
@@ -373,8 +373,8 @@ class _SledLogo extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.route, color: color, size: 64),
-        const Gap(8),
+        Image.asset('assets/images/sled_logo.png', width: 96, height: 96),
+        const Gap(12),
         Text('SLED',
             style: TextStyle(
                 fontWeight: FontWeight.w900,

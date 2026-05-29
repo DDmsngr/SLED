@@ -1,17 +1,19 @@
 flutter_native_splash:
+  # Фон splash-экрана (светлая тема)
   color: "#000000"
   image: assets/images/sled_logo.png
-  image_dark: assets/images/sled_logo.png
-  color_dark: "#000000"
 
-  # Android 12+ Splash API
+  # Тёмная тема (отдельный фон если нужен — пока тот же)
+  color_dark: "#000000"
+  image_dark: assets/images/sled_logo.png
+
+  # Android 12+ Splash Icon API — иконка адаптивного формата
   android_12:
     image: assets/images/sled_logo.png
     icon_background_color: "#000000"
     image_dark: assets/images/sled_logo.png
     icon_background_color_dark: "#000000"
 
-  # Убираем плашку Flutter по умолчанию
   android: true
   ios: false
   web: false

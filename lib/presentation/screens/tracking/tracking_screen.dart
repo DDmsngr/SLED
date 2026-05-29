@@ -113,6 +113,40 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
               ),
             ),
 
+          // Оверлей инициализации: foreground service + создание сессии (~3–5 с).
+          // Перекрывает весь экран, предотвращая мигание старым состоянием.
+          if (state.isInitializing)
+            Container(
+              color: Colors.black87,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 56,
+                      height: 56,
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF00E5CC),
+                        strokeWidth: 3,
+                      ),
+                    ),
+                    const Gap(24),
+                    Text(
+                      'Запускаем трекинг...',
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(color: Colors.white),
+                    ),
+                    const Gap(6),
+                    Text(
+                      'Ищем GPS-сигнал',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: Colors.white60),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
           if (state.isTracking && !_followUser && _mapReady)
             Positioned(
               top: 100, right: 16,
