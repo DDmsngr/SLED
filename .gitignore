@@ -1,3 +1,6 @@
+# IDE — launch.json содержит API ключи, не коммитить
+.vscode/launch.json
+
 # Flutter/Dart
 .dart_tool/
 .flutter-plugins
