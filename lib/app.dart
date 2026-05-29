@@ -28,7 +28,7 @@ class GpsTrackerApp extends ConsumerWidget {
 }
 
 final _router = GoRouter(
-  initialLocation: '/',
+  initialLocation: '/map',
   routes: [
     GoRoute(path: '/', builder: (_, __) => const HomeScreen()),
     GoRoute(path: '/tracking', builder: (_, __) => const TrackingScreen()),

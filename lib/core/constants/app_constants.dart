@@ -2,7 +2,6 @@
 class AppConstants {
   AppConstants._();
 
-  // Название приложения
   static const String appName = 'SLED';
 
   // GPS
@@ -12,16 +11,18 @@ class AppConstants {
 
   // Карта
   static const double defaultZoom = 15.0;
-  static const String osmTileUrl =
-      'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-  static const String osmAttribution = '© OpenStreetMap contributors';
+
+  // Yandex MapKit API key.
+  // Получить бесплатный ключ: https://developer.tech.yandex.ru/
+  // Передать через: flutter run --dart-define=YANDEX_MAPKIT_API_KEY=ваш_ключ
+  // Для тестирования без ключа карта работает с водяным знаком.
+  static const String yandexApiKey = String.fromEnvironment(
+    'YANDEX_MAPKIT_API_KEY',
+    defaultValue: 'test_api_key',
+  );
 
   // Экспорт
   static const double collagePixelRatio = 3.0;
   static const int videoFps = 30;
   static const int videoBitrate = 4000000;
-
-  // Hive box names
-  static const String sessionsBox = 'sessions';
-  static const String markersBox = 'markers';
 }

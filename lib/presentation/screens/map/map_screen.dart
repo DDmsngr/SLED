@@ -1,25 +1,20 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:yandex_mapkit/yandex_mapkit.dart';
 
 import '../../../core/constants/app_constants.dart';
-import '../../../core/tile_providers/offline_cached_tile_provider.dart';
+import '../../../core/utils/yandex_map_utils.dart';
 import '../../../domain/entities/poi.dart';
 import '../../../domain/entities/poi_type.dart';
 import '../../providers/map_filter_provider.dart';
 import '../../providers/poi_provider.dart';
 
-/// Экран «Разведка» (MapMode.scout).
-///
-/// Трек не пишется. Работает:
-/// - отображение текущей позиции пользователя
-/// - слой всех POI поверх карты
-/// - кнопка «Пынь» — добавить POI в текущую геопозицию
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
 
@@ -28,21 +23,34 @@ class MapScreen extends ConsumerStatefulWidget {
 }
 
 class _MapScreenState extends ConsumerState<MapScreen> {
-  final MapController _mapCtrl = MapController();
+  YandexMapController? _mapCtrl;
   LatLng? _currentPos;
   bool _followUser = true;
   StreamSubscription<Position>? _posSub;
+
+  BitmapDescriptor? _currentPosIcon;
+  final Map<PoiType, BitmapDescriptor> _poiIcons = {};
+  bool _iconsReady = false;
 
   @override
   void initState() {
     super.initState();
     _startPositionWatch();
+    _loadIcons();
   }
 
   @override
   void dispose() {
     _posSub?.cancel();
     super.dispose();
+  }
+
+  Future<void> _loadIcons() async {
+    _currentPosIcon = await buildCircleMarker(const Color(0xFF00E5CC));
+    for (final t in PoiType.values) {
+      _poiIcons[t] = await buildEmojiMarker(t.emoji);
+    }
+    if (mounted) setState(() => _iconsReady = true);
   }
 
   void _startPositionWatch() {
@@ -55,7 +63,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       final ll = LatLng(pos.latitude, pos.longitude);
       setState(() => _currentPos = ll);
       if (_followUser) {
-        _mapCtrl.move(ll, _mapCtrl.camera.zoom);
+        _mapCtrl?.moveCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(
+              target: ll.toYandex(),
+              zoom: AppConstants.defaultZoom,
+            ),
+          ),
+        );
       }
     });
   }
@@ -63,7 +78,35 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   @override
   Widget build(BuildContext context) {
     final poisAsync = ref.watch(poisProvider);
+    final filter = ref.watch(mapFilterProvider);
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final mapObjects = <MapObject>[
+      if (_iconsReady && _currentPos != null)
+        PlacemarkMapObject(
+          mapId: const MapObjectId('current_pos'),
+          point: _currentPos!.toYandex(),
+          icon: PlacemarkIcon.single(
+            PlacemarkIconStyle(image: _currentPosIcon!, scale: 0.8),
+          ),
+        ),
+      if (_iconsReady)
+        ...poisAsync.whenOrNull(
+              data: (pois) => pois
+                  .map((poi) => PlacemarkMapObject(
+                        mapId: MapObjectId('poi_${poi.id}'),
+                        point: poi.position.toYandex(),
+                        icon: PlacemarkIcon.single(PlacemarkIconStyle(
+                          image: _poiIcons[poi.type]!,
+                          scale: 0.8,
+                        )),
+                        onTap: (_, __) => _showPoiDetail(context, poi),
+                      ))
+                  .toList(),
+            ) ??
+            [],
+    ];
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -71,86 +114,53 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         backgroundColor: Colors.black38,
         foregroundColor: Colors.white,
         elevation: 0,
-        title: const Text('Разведка',
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        title: const Text(
+          'Разведка',
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        ),
         actions: [
-          // Кнопка «скрыть/показать треки» — через map filter
-          Consumer(builder: (_, ref, __) {
-            final filter = ref.watch(mapFilterProvider);
-            return IconButton(
-              icon: Icon(
-                filter.tracksHidden
-                    ? Icons.layers_clear
-                    : Icons.layers,
-                color: Colors.white,
-              ),
-              tooltip: filter.tracksHidden
-                  ? 'Показать треки'
-                  : 'Скрыть треки',
-              onPressed: filter.tracksHidden
-                  ? ref.read(mapFilterProvider.notifier).showAllTracks
-                  : ref.read(mapFilterProvider.notifier).hideAllTracks,
-            );
-          }),
+          IconButton(
+            icon: const Icon(Icons.list_alt, color: Colors.white),
+            tooltip: 'Мои следы',
+            onPressed: () => context.push('/'),
+          ),
+          IconButton(
+            icon: Icon(
+              filter.tracksHidden ? Icons.layers_clear : Icons.layers,
+              color: Colors.white,
+            ),
+            tooltip: filter.tracksHidden ? 'Показать треки' : 'Скрыть треки',
+            onPressed: filter.tracksHidden
+                ? ref.read(mapFilterProvider.notifier).showAllTracks
+                : ref.read(mapFilterProvider.notifier).hideAllTracks,
+          ),
         ],
       ),
       body: Stack(
         children: [
-          FlutterMap(
-            mapController: _mapCtrl,
-            options: MapOptions(
-              initialCenter: _currentPos ?? const LatLng(59.9500, 30.3167),
-              initialZoom: AppConstants.defaultZoom,
-              onMapEvent: (event) {
-                if (event is MapEventMoveStart &&
-                    event.source != MapEventSource.mapController) {
-                  setState(() => _followUser = false);
-                }
-              },
-            ),
-            children: [
-              TileLayer(
-                urlTemplate: AppConstants.osmTileUrl,
-                tileProvider: OfflineCachedTileProvider(),
-                userAgentPackageName: 'com.example.sled',
-                tileBuilder: _darkModeTileBuilder,
-              ),
-
-              // ── Слой POI — виден ВСЕГДА ───────────────────────────────
-              poisAsync.when(
-                loading: () => const MarkerLayer(markers: []),
-                error: (_, __) => const MarkerLayer(markers: []),
-                data: (pois) => MarkerLayer(
-                  markers: pois.map(_buildPoiMarker).toList(),
-                ),
-              ),
-
-              // ── Маркер текущей позиции ────────────────────────────────
-              if (_currentPos != null)
-                MarkerLayer(markers: [
-                  Marker(
-                    point: _currentPos!,
-                    width: 24,
-                    height: 24,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                        boxShadow: [
-                          BoxShadow(
-                            color: theme.colorScheme.primary.withOpacity(0.4),
-                            blurRadius: 8,
-                          )
-                        ],
-                      ),
-                    ),
+          YandexMap(
+            nightModeEnabled: isDark,
+            mapType: MapType.map,
+            onMapCreated: (c) {
+              _mapCtrl = c;
+              if (_currentPos != null) {
+                c.moveCamera(CameraUpdate.newCameraPosition(
+                  CameraPosition(
+                    target: _currentPos!.toYandex(),
+                    zoom: AppConstants.defaultZoom,
                   ),
-                ]),
-            ],
+                ));
+              }
+            },
+            mapObjects: mapObjects,
+            onCameraPositionChanged: (_, reason, __) {
+              if (reason == CameraUpdateReason.gestures) {
+                setState(() => _followUser = false);
+              }
+            },
           ),
 
-          // ── Кнопка re-center ─────────────────────────────────────────
+          // Кнопка возврата к позиции
           if (!_followUser && _currentPos != null)
             Positioned(
               top: 100,
@@ -159,15 +169,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 heroTag: 'recenter',
                 onPressed: () {
                   setState(() => _followUser = true);
-                  _mapCtrl.move(_currentPos!, _mapCtrl.camera.zoom);
+                  _mapCtrl?.moveCamera(CameraUpdate.newCameraPosition(
+                    CameraPosition(
+                      target: _currentPos!.toYandex(),
+                      zoom: AppConstants.defaultZoom,
+                    ),
+                  ));
                 },
                 backgroundColor: theme.colorScheme.surface,
-                child: Icon(Icons.my_location,
-                    color: theme.colorScheme.primary),
+                child:
+                    Icon(Icons.my_location, color: theme.colorScheme.primary),
               ),
             ),
 
-          // ── Кнопка «Пынь» ────────────────────────────────────────────
+          // Пынь FAB
           Positioned(
             bottom: 32,
             right: 24,
@@ -185,37 +200,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       ),
     );
   }
-
-  Marker _buildPoiMarker(Poi poi) {
-    return Marker(
-      point: poi.position,
-      width: 40,
-      height: 40,
-      child: Tooltip(
-        message: '${poi.type.emoji} ${poi.type.label}'
-            '${poi.comment != null ? '\n${poi.comment}' : ''}',
-        child: GestureDetector(
-          onTap: () => _showPoiDetail(context, poi),
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))
-              ],
-            ),
-            child: Center(
-              child: Text(poi.type.emoji,
-                  style: const TextStyle(fontSize: 20)),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── Боттом-шит добавления «Пынь» ─────────────────────────────────────────
 
   Future<void> _showAddPoiSheet(BuildContext context, LatLng position) async {
     await showModalBottomSheet<void>(
@@ -240,7 +224,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               Text(poi.comment!),
             const Gap(8),
             Text(
-              '${poi.createdAt.day}.${poi.createdAt.month.toString().padLeft(2, '0')}'
+              '${poi.createdAt.day}.'
+              '${poi.createdAt.month.toString().padLeft(2, '0')}'
               '.${poi.createdAt.year}',
               style: const TextStyle(color: Colors.grey, fontSize: 12),
             ),
@@ -261,21 +246,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _darkModeTileBuilder(
-      BuildContext ctx, Widget tile, TileImage tileImage) {
-    final isDark = Theme.of(ctx).brightness == Brightness.dark;
-    if (!isDark) return tile;
-    return ColorFiltered(
-      colorFilter: const ColorFilter.matrix([
-        -1, 0, 0, 0, 255,
-         0,-1, 0, 0, 255,
-         0, 0,-1, 0, 255,
-         0, 0, 0, 1,   0,
-      ]),
-      child: tile,
     );
   }
 }
@@ -326,23 +296,18 @@ class _AddPoiSheetState extends ConsumerState<_AddPoiSheet> {
           const Gap(16),
           Text('Добавить точку', style: theme.textTheme.titleMedium),
           const Gap(16),
-
-          // Тип POI
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: PoiType.values.map((t) {
-              final sel = _type == t;
               return FilterChip(
                 label: Text('${t.emoji} ${t.label}'),
-                selected: sel,
+                selected: _type == t,
                 onSelected: (_) => setState(() => _type = t),
               );
             }).toList(),
           ),
           const Gap(16),
-
-          // Комментарий
           TextField(
             controller: _commentCtrl,
             decoration: const InputDecoration(
@@ -352,8 +317,6 @@ class _AddPoiSheetState extends ConsumerState<_AddPoiSheet> {
             maxLines: 2,
           ),
           const Gap(12),
-
-          // Фото
           SwitchListTile(
             value: _addPhoto,
             onChanged: (v) => setState(() => _addPhoto = v),
@@ -361,7 +324,6 @@ class _AddPoiSheetState extends ConsumerState<_AddPoiSheet> {
             contentPadding: EdgeInsets.zero,
           ),
           const Gap(16),
-
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
