@@ -1,12 +1,15 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/constants/app_constants.dart';
+import '../../../core/services/app_logger.dart';
 import '../../../data/datasources/isar_datasource.dart';
 import '../../providers/poi_provider.dart';
 import '../../providers/session_provider.dart';
@@ -37,6 +40,89 @@ class DevScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // ── Конфигурация ────────────────────────────────────────────
+          _Section(title: 'Конфигурация', children: [
+            _Row('Yandex API key',
+                '${AppConstants.yandexApiKey.substring(0, 8)}... '
+                '(${AppConstants.yandexApiKey == 'test_api_key' ? '⚠️ TEST KEY' : '✅ real key'})'),
+          ]),
+          const Gap(16),
+
+          // ── Лог событий ─────────────────────────────────────────────
+          StreamBuilder<List<LogEntry>>(
+            stream: AppLogger.stream,
+            initialData: AppLogger.entries,
+            builder: (context, snapshot) {
+              final logs = snapshot.data ?? [];
+              return _Section(
+                title: 'Лог (${logs.length})',
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.copy, size: 18),
+                      tooltip: 'Скопировать',
+                      onPressed: () {
+                        final text = logs
+                            .map((e) => '[${e.timeStr}][${e.tag}] ${e.message}')
+                            .join('\n');
+                        Clipboard.setData(ClipboardData(text: text));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Лог скопирован')),
+                        );
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.clear_all, size: 18),
+                      tooltip: 'Очистить',
+                      onPressed: AppLogger.clear,
+                    ),
+                  ],
+                ),
+                children: logs.isEmpty
+                    ? const [_Row('', 'пусто')]
+                    : logs
+                        .take(50)
+                        .map((e) => Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(e.timeStr,
+                                      style: const TextStyle(
+                                          fontSize: 10,
+                                          color: Colors.grey,
+                                          fontFamily: 'monospace')),
+                                  const Gap(4),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 4, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: Colors.deepOrange.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                    child: Text(e.tag,
+                                        style: const TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.deepOrange,
+                                            fontFamily: 'monospace')),
+                                  ),
+                                  const Gap(4),
+                                  Expanded(
+                                    child: Text(e.message,
+                                        style: const TextStyle(
+                                            fontSize: 11,
+                                            fontFamily: 'monospace')),
+                                  ),
+                                ],
+                              ),
+                            ))
+                        .toList(),
+              );
+            },
+          ),
+          const Gap(16),
+
           _Section(title: 'Хранилище Isar', children: [
             _Row(
               'Сессий (Isar)',
@@ -192,9 +278,10 @@ class DevScreen extends ConsumerWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.children});
+  const _Section({required this.title, required this.children, this.trailing});
   final String title;
   final List<Widget> children;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -204,11 +291,18 @@ class _Section extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleSmall
-                    ?.copyWith(color: Colors.deepOrange)),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(title,
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleSmall
+                          ?.copyWith(color: Colors.deepOrange)),
+                ),
+                if (trailing != null) trailing!,
+              ],
+            ),
             const Divider(),
             ...children,
           ],

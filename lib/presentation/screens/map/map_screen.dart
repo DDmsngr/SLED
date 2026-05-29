@@ -9,6 +9,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 
 import '../../../core/constants/app_constants.dart';
+import '../../../core/services/app_logger.dart';
 import '../../../core/utils/yandex_map_utils.dart';
 import '../../../domain/entities/poi.dart';
 import '../../../domain/entities/poi_type.dart';
@@ -32,28 +33,65 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   final Map<PoiType, BitmapDescriptor> _poiIcons = {};
   bool _iconsReady = false;
 
+  // Map status tracking
+  bool _mapCreated = false;
+  bool _mapInteractive = false;
+  bool _showTimeoutWarning = false;
+  Timer? _timeoutTimer;
+  bool _firstGpsFix = false;
+
   @override
   void initState() {
     super.initState();
-    _startPositionWatch();
+    AppLogger.log('MapScreen', 'init | apiKey prefix: ${AppConstants.yandexApiKey.substring(0, 8)}...');
     _loadIcons();
+    _checkPermissionAndStart();
+
+    // Если через 20 сек карта не стала интерактивной — показываем предупреждение
+    _timeoutTimer = Timer(const Duration(seconds: 20), () {
+      if (!_mapInteractive && mounted) {
+        AppLogger.log('MapScreen', 'TIMEOUT: карта не загрузилась за 20 сек');
+        setState(() => _showTimeoutWarning = true);
+      }
+    });
   }
 
   @override
   void dispose() {
     _posSub?.cancel();
+    _timeoutTimer?.cancel();
     super.dispose();
   }
 
   Future<void> _loadIcons() async {
+    AppLogger.log('MapScreen', 'loadIcons start');
     _currentPosIcon = await buildCircleMarker(const Color(0xFF00E5CC));
     for (final t in PoiType.values) {
       _poiIcons[t] = await buildEmojiMarker(t.emoji);
     }
+    AppLogger.log('MapScreen', 'loadIcons done');
     if (mounted) setState(() => _iconsReady = true);
   }
 
+  Future<void> _checkPermissionAndStart() async {
+    var permission = await Geolocator.checkPermission();
+    AppLogger.log('MapScreen', 'GPS permission: $permission');
+
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      AppLogger.log('MapScreen', 'GPS after request: $permission');
+    }
+
+    if (permission == LocationPermission.whileInUse ||
+        permission == LocationPermission.always) {
+      _startPositionWatch();
+    } else {
+      AppLogger.log('MapScreen', 'ERROR: GPS permission denied');
+    }
+  }
+
   void _startPositionWatch() {
+    AppLogger.log('MapScreen', 'startPositionWatch');
     _posSub = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
@@ -61,17 +99,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       ),
     ).listen((pos) {
       final ll = LatLng(pos.latitude, pos.longitude);
+      if (!_firstGpsFix) {
+        _firstGpsFix = true;
+        AppLogger.log('MapScreen',
+            'first GPS fix: ${ll.latitude.toStringAsFixed(5)}, ${ll.longitude.toStringAsFixed(5)} '
+            'acc=${pos.accuracy.toStringAsFixed(0)}m');
+      }
       setState(() => _currentPos = ll);
       if (_followUser) {
         _mapCtrl?.moveCamera(
           CameraUpdate.newCameraPosition(
-            CameraPosition(
-              target: ll.toYandex(),
-              zoom: AppConstants.defaultZoom,
-            ),
+            CameraPosition(target: ll.toYandex(), zoom: AppConstants.defaultZoom),
           ),
         );
       }
+    }, onError: (e) {
+      AppLogger.log('MapScreen', 'GPS stream error: $e');
     });
   }
 
@@ -143,6 +186,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             mapType: MapType.map,
             onMapCreated: (c) {
               _mapCtrl = c;
+              _mapCreated = true;
+              AppLogger.log('Map', 'onMapCreated OK');
               if (_currentPos != null) {
                 c.moveCamera(CameraUpdate.newCameraPosition(
                   CameraPosition(
@@ -153,14 +198,81 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               }
             },
             mapObjects: mapObjects,
-            onCameraPositionChanged: (_, reason, __) {
+            onCameraPositionChanged: (position, reason, finished) {
+              if (!_mapInteractive) {
+                AppLogger.log('Map',
+                    'first camera event (reason=$reason) → tiles loading');
+                setState(() {
+                  _mapInteractive = true;
+                  _showTimeoutWarning = false;
+                });
+              }
               if (reason == CameraUpdateReason.gestures) {
                 setState(() => _followUser = false);
               }
             },
           ),
 
-          // Кнопка возврата к позиции
+          // ── Оверлей: карта грузится ───────────────────────────────────
+          if (!_mapInteractive)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: AnimatedOpacity(
+                  opacity: _mapCreated ? 0.0 : 1.0,
+                  duration: const Duration(milliseconds: 600),
+                  child: Container(
+                    color: Colors.black,
+                    child: const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(
+                            color: Color(0xFF00E5CC),
+                          ),
+                          Gap(16),
+                          Text('Загружаем карту...',
+                              style: TextStyle(color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+          // ── Предупреждение о таймауте ────────────────────────────────
+          if (_showTimeoutWarning)
+            Positioned(
+              top: 80,
+              left: 16,
+              right: 16,
+              child: Material(
+                borderRadius: BorderRadius.circular(12),
+                color: Colors.orange.shade900,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.wifi_off, color: Colors.white, size: 20),
+                      const Gap(8),
+                      const Expanded(
+                        child: Text(
+                          'Карта не отвечает. Проверь интернет или отключи VPN.',
+                          style: TextStyle(color: Colors.white, fontSize: 13),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white, size: 18),
+                        onPressed: () =>
+                            setState(() => _showTimeoutWarning = false),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+          // ── Кнопка возврата к позиции ────────────────────────────────
           if (!_followUser && _currentPos != null)
             Positioned(
               top: 100,
@@ -177,12 +289,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ));
                 },
                 backgroundColor: theme.colorScheme.surface,
-                child:
-                    Icon(Icons.my_location, color: theme.colorScheme.primary),
+                child: Icon(Icons.my_location, color: theme.colorScheme.primary),
               ),
             ),
 
-          // Пынь FAB
+          // ── Пынь FAB ─────────────────────────────────────────────────
           Positioned(
             bottom: 32,
             right: 24,
