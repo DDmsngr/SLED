@@ -12,6 +12,10 @@
 # Keep enums
 -keepclassmembers enum * { *; }
 
+# Yandex MapKit
+-keep class com.yandex.** { *; }
+-dontwarn com.yandex.**
+
 # Play Core (referenced by Flutter embedding, not used directly)
 -dontwarn com.google.android.play.core.**
 -keep class com.google.android.play.core.** { *; }
