@@ -41,14 +41,22 @@ class DevScreen extends ConsumerWidget {
         padding: const EdgeInsets.all(16),
         children: [
           // ── Конфигурация ────────────────────────────────────────────
-          FutureBuilder<String>(
-            future: NativeConfig.yandexKeyPrefix(),
+          FutureBuilder<(String, String)>(
+            future: Future.wait([
+              NativeConfig.yandexKeyPrefix(),
+              NativeConfig.mapKitInitStatus(),
+            ]).then((r) => (r[0], r[1])),
             builder: (context, snap) {
-              final prefix = snap.data ?? '...';
+              final prefix = snap.data?.$1 ?? '...';
+              final initStatus = snap.data?.$2 ?? '...';
               final isTest = prefix == 'test_api' || prefix.startsWith('test');
+              final initOk = initStatus.startsWith('ok:') ||
+                  initStatus == 'already_init';
               return _Section(title: 'Конфигурация', children: [
                 _Row('Yandex key (manifest)',
                     '$prefix... ${isTest ? '⚠️ TEST KEY' : '✅ real key'}'),
+                _Row('MapKit init',
+                    '$initStatus ${initOk ? '✅' : '❌'}'),
               ]);
             },
           ),

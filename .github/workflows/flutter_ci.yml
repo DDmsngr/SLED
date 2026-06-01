@@ -50,7 +50,7 @@ jobs:
       - name: Build release APK
         env:
           YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
-        run: flutter build apk --release --no-tree-shake-icons
+        run: flutter build apk --release --no-tree-shake-icons --dart-define=YANDEX_MAPKIT_API_KEY=$YANDEX_MAPKIT_API_KEY
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4

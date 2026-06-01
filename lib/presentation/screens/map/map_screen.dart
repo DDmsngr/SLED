@@ -10,6 +10,7 @@ import 'package:yandex_mapkit/yandex_mapkit.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/services/app_logger.dart';
+import '../../../core/services/native_config.dart';
 import '../../../core/utils/yandex_map_utils.dart';
 import '../../../domain/entities/poi.dart';
 import '../../../domain/entities/poi_type.dart';
@@ -43,7 +44,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   @override
   void initState() {
     super.initState();
-    AppLogger.log('MapScreen', 'init | apiKey prefix: ${AppConstants.yandexApiKey.substring(0, 8)}...');
+    NativeConfig.mapKitInitStatus().then(
+      (s) => AppLogger.log('MapScreen', 'MapKit init: $s'),
+    );
     _loadIcons();
     _checkPermissionAndStart();
 
