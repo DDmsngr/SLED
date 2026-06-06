@@ -5,6 +5,23 @@ allprojects {
     }
 }
 
+// AGP 8.x requires explicit namespace in every library module.
+// Older plugins (e.g. isar_flutter_libs) don't set it, so we derive
+// it from their AndroidManifest package attribute automatically.
+subprojects {
+    afterEvaluate { project ->
+        if (project.plugins.hasPlugin('com.android.library')) {
+            if (project.android.namespace == null) {
+                def manifest = project.android.sourceSets.main.manifest.srcFile
+                if (manifest.exists()) {
+                    def pkg = new XmlParser().parse(manifest).@package
+                    if (pkg) { project.android.namespace = pkg }
+                }
+            }
+        }
+    }
+}
+
 rootProject.buildDir = "../build"
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
