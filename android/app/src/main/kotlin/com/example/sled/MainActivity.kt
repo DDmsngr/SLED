@@ -9,6 +9,16 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private var mapKitInitStatus = "not_attempted"
 
+    override fun onStart() {
+        super.onStart()
+        try { MapKitFactory.getInstance().onStart() } catch (_: Exception) {}
+    }
+
+    override fun onStop() {
+        super.onStop()
+        try { MapKitFactory.getInstance().onStop() } catch (_: Exception) {}
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         // Must initialize MapKit before registering Flutter plugins
         initMapKit()
