@@ -83,6 +83,6 @@ flutter { source "../.." }
 dependencies {
     implementation "androidx.appcompat:appcompat:1.6.1"
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.22"
-    // Required to call MapKitFactory from MainActivity (yandex_mapkit 3.3.0 wraps 4.3.2-full)
-    implementation "com.yandex.android:maps.mobile:4.3.2-full"
+    // Required to call MapKitFactory from MainApplication (yandex_mapkit 4.2.1 wraps 4.22.0-full)
+    implementation "com.yandex.android:maps.mobile:4.22.0-full"
 }
