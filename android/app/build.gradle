@@ -20,7 +20,7 @@ logger.lifecycle(">>> SLED: yandexMapkitApiKey prefix = ${keyPrefix}...")
 
 android {
     namespace "com.example.sled"
-    compileSdk 34
+    compileSdk 35
     ndkVersion "26.1.10909125"
 
     defaultConfig {
