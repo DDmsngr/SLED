@@ -11,6 +11,10 @@ allprojects {
 subprojects {
     afterEvaluate { project ->
         if (project.plugins.hasPlugin('com.android.library')) {
+            // Force all plugins to compile against SDK 36 so attributes
+            // like lStar (API 31+) are always available during resource linking.
+            project.android.compileSdk = 36
+
             if (project.android.namespace == null) {
                 def manifest = project.android.sourceSets.main.manifest.srcFile
                 if (manifest.exists()) {
