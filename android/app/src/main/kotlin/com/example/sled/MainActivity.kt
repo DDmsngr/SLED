@@ -48,9 +48,9 @@ class MainActivity : FlutterActivity() {
                     "getAppPackage" -> result.success(packageName)
 
                     "getMapKitVersion" -> {
-                        result.success(runCatching {
-                            com.yandex.runtime.Runtime.getNativeVersion()
-                        }.getOrElse { "unknown" })
+                        // Версия зафиксирована в android/app/build.gradle
+                        // (implementation "com.yandex.android:maps.mobile:4.22.0-full")
+                        result.success("4.22.0-full")
                     }
 
                     else -> result.notImplemented()
