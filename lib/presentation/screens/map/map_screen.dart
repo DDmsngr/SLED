@@ -185,7 +185,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       body: Stack(
         children: [
           YandexMap(
-            nightModeEnabled: isDark,
+            // ДИАГНОСТИКА КАРТ: временно принудительно false. yandex_mapkit 4.2.1
+            // имеет известный баг, когда nightMode=true рендерит только служебный
+            // слой без базовых тайлов. Если после этого фикса карта покажется →
+            // причина в nightMode, вернём условно с воркараундом.
+            nightModeEnabled: false,
             mapType: MapType.map,
             onMapCreated: (c) {
               _mapCtrl = c;

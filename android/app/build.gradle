@@ -58,8 +58,11 @@ android {
         }
         release {
             signingConfig signingConfigs.release
-            minifyEnabled true
-            shrinkResources true
+            // ДИАГНОСТИКА КАРТ: временно отключаем R8/shrink на случай,
+            // если ProGuard режет нативный класс MapKit несмотря на -keep правила.
+            // TODO: вернуть true после подтверждения что тайлы грузятся.
+            minifyEnabled false
+            shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
                 'proguard-rules.pro'
         }
