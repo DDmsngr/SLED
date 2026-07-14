@@ -1,13 +1,15 @@
 package com.example.sled
 
 import android.content.pm.PackageManager
+import android.content.pm.Signature
+import android.os.Build
 import com.yandex.mapkit.MapKitFactory
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.security.MessageDigest
 
 class MainActivity : FlutterActivity() {
-    private var mapKitInitStatus = "app_level"
 
     override fun onStart() {
         super.onStart()
@@ -38,9 +40,46 @@ class MainActivity : FlutterActivity() {
                             result.success("error:${e.message?.take(40)}")
                         }
                     }
-                    "getMapKitInitStatus" -> result.success(mapKitInitStatus)
+
+                    "getMapKitInitStatus" -> result.success(MainApplication.mapKitInitStatus)
+
+                    "getAppSha1" -> result.success(appSha1())
+
+                    "getAppPackage" -> result.success(packageName)
+
+                    "getMapKitVersion" -> {
+                        result.success(runCatching {
+                            com.yandex.runtime.Runtime.getNativeVersion()
+                        }.getOrElse { "unknown" })
+                    }
+
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    /** SHA-1 подписи APK — сравниваем с тем, что зарегистрирован в кабинете Yandex. */
+    private fun appSha1(): String = try {
+        val signatures: Array<Signature> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val info = packageManager.getPackageInfo(
+                packageName, PackageManager.GET_SIGNING_CERTIFICATES
+            )
+            info.signingInfo?.let {
+                if (it.hasMultipleSigners()) it.apkContentsSigners else it.signingCertificateHistory
+            } ?: emptyArray()
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES).signatures
+                ?: emptyArray()
+        }
+
+        if (signatures.isEmpty()) "no_signature"
+        else {
+            val md = MessageDigest.getInstance("SHA-1")
+            md.update(signatures[0].toByteArray())
+            md.digest().joinToString(":") { "%02X".format(it) }
+        }
+    } catch (e: Exception) {
+        "err:${e.javaClass.simpleName}"
     }
 }

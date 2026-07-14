@@ -41,22 +41,49 @@ class DevScreen extends ConsumerWidget {
         padding: const EdgeInsets.all(16),
         children: [
           // ── Конфигурация ────────────────────────────────────────────
-          FutureBuilder<(String, String)>(
+          FutureBuilder<List<String>>(
             future: Future.wait([
               NativeConfig.yandexKeyPrefix(),
               NativeConfig.mapKitInitStatus(),
-            ]).then((r) => (r[0], r[1])),
+              NativeConfig.appPackage(),
+              NativeConfig.appSha1(),
+              NativeConfig.mapKitVersion(),
+            ]),
             builder: (context, snap) {
-              final prefix = snap.data?.$1 ?? '...';
-              final initStatus = snap.data?.$2 ?? '...';
+              final d = snap.data ?? const ['...', '...', '...', '...', '...'];
+              final prefix = d[0];
+              final initStatus = d[1];
+              final pkg = d[2];
+              final sha1 = d[3];
+              final mkVersion = d[4];
               final isTest = prefix == 'test_api' || prefix.startsWith('test');
-              final initOk = initStatus.startsWith('ok:') ||
-                  initStatus == 'already_init';
+              final initOk = initStatus.startsWith('ok:');
               return _Section(title: 'Конфигурация', children: [
                 _Row('Yandex key (manifest)',
                     '$prefix... ${isTest ? '⚠️ TEST KEY' : '✅ real key'}'),
                 _Row('MapKit init',
                     '$initStatus ${initOk ? '✅' : '❌'}'),
+                _Row('MapKit version', mkVersion),
+                _Row('App package', pkg),
+                _Row('SHA-1 (release)', sha1),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.copy, size: 14),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: const Size(0, 32),
+                    ),
+                    label: const Text('Скопировать SHA-1',
+                        style: TextStyle(fontSize: 12)),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: sha1));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('SHA-1 скопирован')),
+                      );
+                    },
+                  ),
+                ),
               ]);
             },
           ),
