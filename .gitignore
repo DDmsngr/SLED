@@ -21,6 +21,9 @@ android/app/release/
 android/key.properties
 *.keystore
 *.jks
+# Разрешаем ТОЛЬКО debug.keystore — фиксированная подпись для debug/CI сборок,
+# чтобы APK обновлялся поверх без удаления. Никогда не коммитить release-keystore.
+!android/debug.keystore
 
 # IDE
 .idea/

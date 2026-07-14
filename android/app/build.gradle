@@ -41,14 +41,11 @@ android {
 
     signingConfigs {
         release {
-            // TODO: укажите реальный keystore перед публикацией
-            // storeFile file("sled.keystore")
-            // storePassword "..."
-            // keyAlias "sled"
-            // keyPassword "..."
-            // Пока используем debug-подпись для тестирования
-            storeFile file(localProperties.getProperty('debug.store.file') ?:
-                "${System.getenv('HOME')}/.android/debug.keystore")
+            // TODO: перед публикацией в стор указать production keystore.
+            // Пока используем ЗАФИКСИРОВАННЫЙ debug.keystore из репозитория
+            // (android/debug.keystore) — стабильная подпись между CI-сборками,
+            // APK ставится поверх старой версии без удаления.
+            storeFile rootProject.file('debug.keystore')
             storePassword "android"
             keyAlias "androiddebugkey"
             keyPassword "android"
