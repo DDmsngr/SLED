@@ -126,7 +126,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final poisAsync = ref.watch(poisProvider);
     final filter = ref.watch(mapFilterProvider);
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     final mapObjects = <MapObject>[
       if (_iconsReady && _currentPos != null)
