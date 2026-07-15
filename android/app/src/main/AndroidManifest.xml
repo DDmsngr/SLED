@@ -32,7 +32,7 @@
             android:name="flutterEmbedding"
             android:value="2"/>
 
-        <!-- Yandex MapKit API-ключ теперь передаётся из Dart через --dart-define,
+        <!-- Yandex MapKit API-ключ теперь передаётся из Dart через dart-define,
              см. lib/main.dart. Раньше был meta-data com.yandex.android.sdk.MAPKIT_API_KEY. -->
 
         <activity
