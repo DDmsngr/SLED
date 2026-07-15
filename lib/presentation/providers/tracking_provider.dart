@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/utils/haversine.dart';
 import '../../data/datasources/gps_datasource.dart';
@@ -57,6 +58,7 @@ class TrackingState {
     this.session,
     this.currentPosition,
     this.displayDuration = Duration.zero,
+    this.currentSpeedKmh = 0,
     this.errorMessage,
   });
 
@@ -64,6 +66,10 @@ class TrackingState {
   final TrackSession? session;
   final LatLng? currentPosition;
   final Duration displayDuration;
+  /// Мгновенная скорость последней GPS-точки в км/ч (обновляется при
+  /// каждом _onNewPoint). Средняя скорость считается отдельно из
+  /// distanceMeters/duration в StatsBarWidget.
+  final double currentSpeedKmh;
   final String? errorMessage;
 
   // ── Derived booleans (обратная совместимость с UI) ───────────────────────
@@ -79,6 +85,7 @@ class TrackingState {
     TrackSession? session,
     LatLng? currentPosition,
     Duration? displayDuration,
+    double? currentSpeedKmh,
     String? errorMessage,
   }) =>
       TrackingState(
@@ -86,6 +93,7 @@ class TrackingState {
         session:         session         ?? this.session,
         currentPosition: currentPosition ?? this.currentPosition,
         displayDuration: displayDuration ?? this.displayDuration,
+        currentSpeedKmh: currentSpeedKmh ?? this.currentSpeedKmh,
         errorMessage:    errorMessage,
       );
 }
@@ -130,6 +138,10 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
       }
 
       await _initForegroundService();
+
+      // Держим экран включённым, чтобы GPS-подписка UI-изолейта не
+      // прерывалась при засыпании. При stop/pause отключаем.
+      await WakelockPlus.enable();
 
       final sessionId = _uuid.v4();
       final now = DateTime.now();
@@ -215,6 +227,7 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
     _gpsSub = null;
     await _trackingRepo.stopTracking();
     await FlutterForegroundTask.stopService();
+    await WakelockPlus.disable();
 
     if (state.session != null) {
       final finished = state.session!.copyWith(
@@ -244,7 +257,11 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
       dist += haversineDistance(current.points.last.position, point.position);
     }
     final updated = current.copyWith(points: newPoints, distanceMeters: dist);
-    state = state.copyWith(session: updated, currentPosition: point.position);
+    state = state.copyWith(
+      session: updated,
+      currentPosition: point.position,
+      currentSpeedKmh: point.speedMs * 3.6,
+    );
 
     // Персистируем каждые 10 точек чтобы не терять данные при крэше.
     if (newPoints.length % 10 == 0) {

@@ -164,6 +164,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
               child: StatsBarWidget(
                 session: state.session!,
                 overrideDuration: state.displayDuration,
+                currentSpeedKmh:
+                    state.isActivelyRecording ? state.currentSpeedKmh : null,
               ),
             ),
 

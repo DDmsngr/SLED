@@ -9,10 +9,14 @@ class StatsBarWidget extends StatelessWidget {
     super.key,
     required this.session,
     this.overrideDuration,
+    this.currentSpeedKmh,
   });
 
   final TrackSession session;
   final Duration? overrideDuration; // плавный таймер из TrackingState
+  /// Если задано — показываем мгновенную скорость (во время активной
+  /// записи). Иначе — среднюю за всю сессию (история, детали).
+  final double? currentSpeedKmh;
 
   double get _avgSpeed {
     final dur = overrideDuration ?? session.duration;
@@ -25,6 +29,8 @@ class StatsBarWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final duration = overrideDuration ?? session.duration;
+    final speedValue = currentSpeedKmh ?? _avgSpeed;
+    final speedLabel = currentSpeedKmh != null ? 'Скорость' : 'Ср. скорость';
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -47,8 +53,8 @@ class StatsBarWidget extends StatelessWidget {
             _divider(theme),
             _Stat(
               icon: Icons.speed,
-              label: 'Скорость',
-              value: '${_avgSpeed.toStringAsFixed(1)} км/ч',
+              label: speedLabel,
+              value: '${speedValue.toStringAsFixed(1)} км/ч',
             ),
             _divider(theme),
             _Stat(

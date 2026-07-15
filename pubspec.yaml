@@ -21,6 +21,10 @@ dependencies:
   geolocator: ^12.0.0
   permission_handler: ^11.3.1
 
+  # Держим экран включённым во время активной записи трека
+  # (иначе Android гасит дисплей и обрывает UI).
+  wakelock_plus: ^1.2.0
+
   image_picker: ^1.1.2
   image: ^4.2.0
   gal: ^1.2.0

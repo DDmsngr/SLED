@@ -253,7 +253,20 @@ class _TrackMapWidgetState extends ConsumerState<TrackMapWidget> {
 
     return AbsorbPointer(
       absorbing: !widget.interactive,
-      child: LifecycleYandexMap(onMapCreated: _onMapCreated),
+      child: LifecycleYandexMap(
+        onMapCreated: _onMapCreated,
+        onResume: () {
+          // При возврате из background — заново перецентровать камеру,
+          // потому что за время сна OS позиция могла уйти далеко от
+          // видимой области.
+          if (widget.followUser && widget.currentPosition != null) {
+            _moveCamera(widget.currentPosition!);
+          } else {
+            final pts = widget.session.points.map((p) => p.position).toList();
+            if (pts.length > 1) _fitTrack(pts);
+          }
+        },
+      ),
     );
   }
 

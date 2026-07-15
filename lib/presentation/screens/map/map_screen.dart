@@ -15,8 +15,10 @@ import '../../../core/services/mapkit_init.dart';
 import '../../../core/utils/yandex_map_utils.dart';
 import '../../../domain/entities/poi.dart';
 import '../../../domain/entities/poi_type.dart';
+import '../../../domain/entities/track_point.dart';
 import '../../providers/map_filter_provider.dart';
 import '../../providers/poi_provider.dart';
+import '../../providers/tracking_provider.dart';
 import '../../widgets/lifecycle_yandex_map.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
@@ -30,7 +32,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   ymk.MapWindow? _mapWindow;
   ymk.MapObjectCollection? _currentPosCollection;
   ymk.MapObjectCollection? _poiCollection;
+  ymk.MapObjectCollection? _trackCollection;
   ymk.PlacemarkMapObject? _currentPosMark;
+  ymk.PolylineMapObject? _trackLine;
 
   final Map<PoiType, ymk_image.ImageProvider> _poiIcons = {};
 
@@ -145,10 +149,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _mapCreated = true;
     AppLogger.log('Map', 'onMapCreated OK');
 
-    // Отдельные коллекции: текущая позиция и POI. Треки в этом экране не рисуем
-    // (для треков есть TrackMapWidget).
-    _currentPosCollection = window.map.mapObjects.addCollection();
+    // Отдельные коллекции. Порядок важен — рисуется в порядке добавления,
+    // поэтому трек кладём под POI и текущую позицию.
+    _trackCollection = window.map.mapObjects.addCollection();
     _poiCollection = window.map.mapObjects.addCollection();
+    _currentPosCollection = window.map.mapObjects.addCollection();
 
     window.map.addCameraListener(_cameraListener);
 
@@ -159,8 +164,54 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     _refreshCurrentPosMarker();
     _refreshPoiMarkers(ref.read(poisProvider).value ?? const []);
+    _refreshTrackLine(ref.read(trackingProvider).session?.points ?? const []);
 
     if (mounted) setState(() {});
+  }
+
+  /// Перерисовка полилинии текущего трека. Если точек < 2 — линия удаляется.
+  void _refreshTrackLine(List<TrackPoint> trackPoints) {
+    final col = _trackCollection;
+    if (col == null) return;
+
+    final pts = <ymk.Point>[
+      for (final tp in trackPoints) tp.position.toYandex(),
+    ];
+
+    if (_trackLine != null) {
+      col.remove(_trackLine!);
+      _trackLine = null;
+    }
+    if (pts.length < 2) return;
+
+    final scheme = Theme.of(context).colorScheme;
+    _trackLine = col.addPolylineWithGeometry(ymk.Polyline(pts))
+      ..style = ymk.LineStyle(
+        strokeWidth: 4.0,
+        outlineWidth: 1.5,
+        outlineColor: scheme.primary.withValues(alpha: 0.3),
+      )
+      ..setStrokeColor(scheme.primary);
+  }
+
+  /// Форс-обновление позиции при возврате из background: за время сна
+  /// GPS-подписка UI-изолейта могла быть заморожена, и currentPos на
+  /// экране будет старой.
+  Future<void> _refreshOnResume() async {
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      ).timeout(const Duration(seconds: 5));
+      if (!mounted) return;
+      final ll = LatLng(pos.latitude, pos.longitude);
+      _currentPos = ll;
+      _refreshCurrentPosMarker();
+      if (_followUser) _moveCameraTo(ll);
+      AppLogger.log('MapScreen', 'refresh on resume: '
+          '${ll.latitude.toStringAsFixed(5)}, ${ll.longitude.toStringAsFixed(5)}');
+    } catch (e) {
+      AppLogger.log('MapScreen', 'refresh on resume failed: $e');
+    }
   }
 
   void _moveCameraTo(LatLng ll) {
@@ -217,6 +268,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       _refreshPoiMarkers(list);
     });
 
+    // Полилиния активного трека — обновляется при каждой новой точке.
+    ref.listen(trackingProvider, (prev, next) {
+      final oldPts = prev?.session?.points ?? const <TrackPoint>[];
+      final newPts = next.session?.points ?? const <TrackPoint>[];
+      if (oldPts.length != newPts.length) {
+        _refreshTrackLine(newPts);
+      }
+    });
+
     final filter = ref.watch(mapFilterProvider);
     final theme = Theme.of(context);
 
@@ -250,7 +310,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       ),
       body: Stack(
         children: [
-          LifecycleYandexMap(onMapCreated: _onMapCreated),
+          LifecycleYandexMap(
+            onMapCreated: _onMapCreated,
+            onResume: _refreshOnResume,
+          ),
 
           // ── Оверлей: карта грузится ───────────────────────────────────
           if (!_mapInteractive)

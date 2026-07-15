@@ -12,10 +12,15 @@ class LifecycleYandexMap extends StatefulWidget {
     super.key,
     required this.onMapCreated,
     this.onMapDispose,
+    this.onResume,
   });
 
   final void Function(MapWindow window) onMapCreated;
   final VoidCallback? onMapDispose;
+  /// Дёргается при возврате приложения из background (AppLifecycleState.resumed).
+  /// Владельцу нужно на этот сигнал форсировать fetch текущей позиции и
+  /// перецентровать камеру — за время сна OS позиция могла сильно уйти.
+  final VoidCallback? onResume;
 
   @override
   State<LifecycleYandexMap> createState() => _LifecycleYandexMapState();
@@ -34,6 +39,7 @@ class _LifecycleYandexMapState extends State<LifecycleYandexMap> {
       onResume: () {
         _startMapkit();
         _applyTheme();
+        widget.onResume?.call();
       },
       onInactive: _stopMapkit,
     );
