@@ -83,12 +83,17 @@ class IsarSessionRepositoryImpl implements SessionRepository {
         .findFirst();
     if (model == null) return;
 
-    model.photos.add(PhotoEmbed()
-      ..markerId = marker.id
-      ..path = marker.filePath
-      ..lat = marker.position.latitude
-      ..lng = marker.position.longitude
-      ..timestampMs = marker.timestamp.millisecondsSinceEpoch);
+    // Isar возвращает embed-list как fixed-length, .add() на нём кидает
+    // 'Cannot add to a fixed-length list'. Пересобираем список.
+    model.photos = [
+      ...model.photos,
+      PhotoEmbed()
+        ..markerId = marker.id
+        ..path = marker.filePath
+        ..lat = marker.position.latitude
+        ..lng = marker.position.longitude
+        ..timestampMs = marker.timestamp.millisecondsSinceEpoch,
+    ];
 
     await _db.writeTxn(() => _db.trackModels.put(model));
   }

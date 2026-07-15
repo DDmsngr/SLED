@@ -16,7 +16,6 @@ import '../../../core/utils/yandex_map_utils.dart';
 import '../../../domain/entities/poi.dart';
 import '../../../domain/entities/poi_type.dart';
 import '../../../domain/entities/track_point.dart';
-import '../../providers/map_filter_provider.dart';
 import '../../providers/poi_provider.dart';
 import '../../providers/tracking_provider.dart';
 import '../../widgets/lifecycle_yandex_map.dart';
@@ -277,7 +276,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       }
     });
 
-    final filter = ref.watch(mapFilterProvider);
+    final tracking = ref.watch(trackingProvider);
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -291,21 +290,31 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.list_alt, color: Colors.white),
-            tooltip: 'Мои следы',
-            onPressed: () => context.push('/'),
-          ),
-          IconButton(
-            icon: Icon(
-              filter.tracksHidden ? Icons.layers_clear : Icons.layers,
-              color: Colors.white,
+          // Если сейчас пишется трек — показываем красный чип «Идёт запись»
+          // с переходом в экран трекинга. Иначе — обычная кнопка «Мои следы».
+          if (tracking.isTracking)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: TextButton.icon(
+                onPressed: () => context.push('/tracking'),
+                icon: const Icon(Icons.fiber_manual_record,
+                    color: Colors.red, size: 14),
+                label: const Text('Идёт запись',
+                    style: TextStyle(color: Colors.white)),
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.black45,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+              ),
+            )
+          else
+            TextButton.icon(
+              onPressed: () => context.push('/'),
+              icon: const Icon(Icons.folder_outlined,
+                  color: Colors.white, size: 18),
+              label: const Text('Мои следы',
+                  style: TextStyle(color: Colors.white, fontSize: 13)),
             ),
-            tooltip: filter.tracksHidden ? 'Показать треки' : 'Скрыть треки',
-            onPressed: filter.tracksHidden
-                ? ref.read(mapFilterProvider.notifier).showAllTracks
-                : ref.read(mapFilterProvider.notifier).hideAllTracks,
-          ),
         ],
       ),
       body: Stack(

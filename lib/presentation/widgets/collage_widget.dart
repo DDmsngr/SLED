@@ -1,14 +1,20 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../core/utils/date_formatter.dart';
 import '../../domain/entities/track_session.dart';
 import '../../domain/entities/photo_marker.dart';
-import 'track_map_widget.dart';
+import '../../domain/entities/track_point.dart';
 
-/// Коллаж: карта + сетка фото + статистика.
-/// Используется как превью и как источник для RepaintBoundary → PNG.
+/// Коллаж-«паспорт следа»: минималистичный маршрут + сетка фото + статы.
+///
+/// Раньше сюда встраивался живой TrackMapWidget (Yandex PlatformView),
+/// но RepaintBoundary.toImage() не захватывает PlatformView — на PNG
+/// оставалась только рамка без карты. Теперь маршрут рисуется через
+/// CustomPainter из точек трека — работает 100% в snapshot.
 class CollageWidget extends StatelessWidget {
   const CollageWidget({
     super.key,
@@ -23,6 +29,7 @@ class CollageWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final photos = session.photos;
+    final hasTrack = session.points.length >= 2;
 
     return SizedBox(
       width: size.width,
@@ -47,7 +54,21 @@ class CollageWidget extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(16),
-                  child: TrackMapWidget(session: session, interactive: false),
+                  child: Container(
+                    color: theme.colorScheme.surfaceContainerHigh,
+                    child: hasTrack
+                        ? CustomPaint(
+                            painter: _TrackPathPainter(
+                              points: session.points,
+                              color: theme.colorScheme.primary,
+                            ),
+                            child: const SizedBox.expand(),
+                          )
+                        : const Center(
+                            child: Icon(Icons.route,
+                                size: 64, color: Colors.grey),
+                          ),
+                  ),
                 ),
               ),
             ),
@@ -68,6 +89,92 @@ class CollageWidget extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Рисует полилинию трека, вписанную в bounding box контейнера.
+/// Использует линейную проекцию lat/lon (для локальных треков достаточно
+/// точно, для трансконтинентальных — исказится, но для показа маршрута норм).
+class _TrackPathPainter extends CustomPainter {
+  _TrackPathPainter({required this.points, required this.color});
+  final List<TrackPoint> points;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.length < 2) return;
+
+    double minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+    for (final tp in points) {
+      final p = tp.position;
+      if (p.latitude < minLat) minLat = p.latitude;
+      if (p.latitude > maxLat) maxLat = p.latitude;
+      if (p.longitude < minLng) minLng = p.longitude;
+      if (p.longitude > maxLng) maxLng = p.longitude;
+    }
+    // Небольшой отступ вокруг маршрута
+    const padding = 24.0;
+    final w = size.width - padding * 2;
+    final h = size.height - padding * 2;
+
+    // Сохраняем aspect ratio: делим по большему измерению
+    final latRange = math.max(maxLat - minLat, 1e-6);
+    final lngRange = math.max(maxLng - minLng, 1e-6);
+    final scale = math.min(w / lngRange, h / latRange);
+
+    final offsetX = padding + (w - lngRange * scale) / 2;
+    final offsetY = padding + (h - latRange * scale) / 2;
+
+    Offset toXY(LatLng ll) => Offset(
+          offsetX + (ll.longitude - minLng) * scale,
+          offsetY + (maxLat - ll.latitude) * scale, // Y инвертирован
+        );
+
+    final path = Path()..moveTo(toXY(points.first.position).dx,
+        toXY(points.first.position).dy);
+    for (int i = 1; i < points.length; i++) {
+      final o = toXY(points[i].position);
+      path.lineTo(o.dx, o.dy);
+    }
+
+    // Обводка (outline)
+    final outline = Paint()
+      ..color = color.withValues(alpha: 0.35)
+      ..strokeWidth = 12
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(path, outline);
+
+    // Основная линия
+    final line = Paint()
+      ..color = color
+      ..strokeWidth = 6
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(path, line);
+
+    // Старт / финиш
+    final start = toXY(points.first.position);
+    final finish = toXY(points.last.position);
+    canvas.drawCircle(start, 10,
+        Paint()..color = Colors.green.shade600);
+    canvas.drawCircle(start, 10,
+        Paint()
+          ..color = Colors.white
+          ..strokeWidth = 3
+          ..style = PaintingStyle.stroke);
+    canvas.drawCircle(finish, 10, Paint()..color = Colors.red.shade600);
+    canvas.drawCircle(finish, 10,
+        Paint()
+          ..color = Colors.white
+          ..strokeWidth = 3
+          ..style = PaintingStyle.stroke);
+  }
+
+  @override
+  bool shouldRepaint(covariant _TrackPathPainter old) =>
+      old.points.length != points.length || old.color != color;
 }
 
 class _Header extends StatelessWidget {
@@ -143,8 +250,7 @@ class _StatsRow extends StatelessWidget {
 
   Widget _chip(BuildContext ctx, IconData icon, String text) => Chip(
         avatar: Icon(icon, size: 16),
-        label:
-            Text(text, style: Theme.of(ctx).textTheme.labelMedium),
+        label: Text(text, style: Theme.of(ctx).textTheme.labelMedium),
         padding: EdgeInsets.zero,
       );
 }

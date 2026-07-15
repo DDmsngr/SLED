@@ -29,6 +29,10 @@ class GpsTrackerApp extends ConsumerWidget {
 
 final _router = GoRouter(
   initialLocation: '/map',
+  // Если пришёл content:// intent (открытие GPX из Telegram/файлового
+  // менеджера) — Android передаёт его как route path, go_router не знает
+  // такой роут и падает с GoException. Молча возвращаем на главный экран.
+  errorBuilder: (_, __) => const HomeScreen(),
   routes: [
     GoRoute(path: '/', builder: (_, __) => const HomeScreen()),
     GoRoute(path: '/tracking', builder: (_, __) => const TrackingScreen()),
