@@ -32,9 +32,8 @@
             android:name="flutterEmbedding"
             android:value="2"/>
 
-        <meta-data
-            android:name="com.yandex.android.sdk.MAPKIT_API_KEY"
-            android:value="${yandexMapkitApiKey}"/>
+        <!-- Yandex MapKit API-ключ теперь передаётся из Dart через --dart-define,
+             см. lib/main.dart. Раньше был meta-data com.yandex.android.sdk.MAPKIT_API_KEY. -->
 
         <activity
             android:name=".MainActivity"

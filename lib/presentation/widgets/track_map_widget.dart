@@ -3,7 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:yandex_mapkit/yandex_mapkit.dart';
+import 'package:yandex_maps_mapkit/image.dart' as ymk_image;
+import 'package:yandex_maps_mapkit/mapkit.dart' as ymk;
 
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/date_formatter.dart';
@@ -13,6 +14,7 @@ import '../../domain/entities/poi.dart';
 import '../../domain/entities/poi_type.dart';
 import '../../domain/entities/track_session.dart';
 import '../providers/poi_provider.dart';
+import 'lifecycle_yandex_map.dart';
 
 class TrackMapWidget extends ConsumerStatefulWidget {
   const TrackMapWidget({
@@ -39,18 +41,39 @@ class TrackMapWidget extends ConsumerStatefulWidget {
 }
 
 class _TrackMapWidgetState extends ConsumerState<TrackMapWidget> {
-  YandexMapController? _mapController;
+  ymk.MapWindow? _mapWindow;
 
-  BitmapDescriptor? _currentPosIcon;
-  BitmapDescriptor? _startIcon;
-  BitmapDescriptor? _cameraIcon;
-  final Map<PoiType, BitmapDescriptor> _poiIcons = {};
+  // Отдельные коллекции по слоям — так проще их обновлять императивно.
+  ymk.MapObjectCollection? _trackCol;
+  ymk.MapObjectCollection? _markersCol;
+
+  ymk.PolylineMapObject? _trackLine;
+  ymk.PlacemarkMapObject? _startMark;
+  ymk.PlacemarkMapObject? _currentMark;
+
+  ymk_image.ImageProvider? _currentPosIcon;
+  ymk_image.ImageProvider? _startIcon;
+  ymk_image.ImageProvider? _cameraIcon;
+  final Map<PoiType, ymk_image.ImageProvider> _poiIcons = {};
   bool _iconsReady = false;
+
+  late final ymk.MapCameraListener _cameraListener;
 
   @override
   void initState() {
     super.initState();
     _loadIcons();
+    _cameraListener = _CameraListenerImpl(onReason: (r) {
+      if (r == ymk.CameraUpdateReason.Gestures) {
+        widget.onManualPan?.call();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _mapWindow?.map.removeCameraListener(_cameraListener);
+    super.dispose();
   }
 
   Future<void> _loadIcons() async {
@@ -60,38 +83,70 @@ class _TrackMapWidgetState extends ConsumerState<TrackMapWidget> {
     for (final t in PoiType.values) {
       _poiIcons[t] = await buildEmojiMarker(t.emoji);
     }
-    if (mounted) setState(() => _iconsReady = true);
+    if (!mounted) return;
+    setState(() => _iconsReady = true);
+    _rebuildMarkers();
   }
 
   @override
   void didUpdateWidget(TrackMapWidget old) {
     super.didUpdateWidget(old);
-    final c = _mapController;
-    if (c == null) return;
-    if (widget.followUser &&
-        widget.currentPosition != null &&
-        widget.currentPosition != old.currentPosition) {
-      _moveCamera(c, widget.currentPosition!);
+    // Обновление позиции
+    if (widget.currentPosition != old.currentPosition) {
+      _updateCurrentMark();
+      if (widget.followUser && widget.currentPosition != null) {
+        _moveCamera(widget.currentPosition!);
+      }
     }
+    // Начали следить за юзером
     if (widget.followUser && !old.followUser && widget.currentPosition != null) {
-      _moveCamera(c, widget.currentPosition!);
+      _moveCamera(widget.currentPosition!);
+    }
+    // Сессия изменилась (например, добавились точки трека или фото)
+    if (widget.session != old.session) {
+      _rebuildTrackLine();
+      _rebuildMarkers();
     }
   }
 
-  void _moveCamera(YandexMapController c, LatLng pos) {
-    c.moveCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(
-          target: pos.toYandex(),
-          zoom: AppConstants.defaultZoom,
-        ),
+  void _onMapCreated(ymk.MapWindow window) {
+    _mapWindow = window;
+    _trackCol = window.map.mapObjects.addCollection();
+    _markersCol = window.map.mapObjects.addCollection();
+    window.map.addCameraListener(_cameraListener);
+
+    _rebuildTrackLine();
+    _rebuildMarkers();
+
+    // Fit к треку, либо к текущей позиции, либо fallback на центр РФ.
+    final pts = widget.session.points.map((p) => p.position).toList();
+    if (pts.length > 1) {
+      _fitTrack(pts);
+    } else if (widget.currentPosition != null) {
+      _moveCamera(widget.currentPosition!);
+    } else if (pts.isNotEmpty) {
+      _moveCamera(pts.first);
+    } else {
+      _moveCamera(const LatLng(55.7558, 37.6173)); // Москва — чтобы тайлы поехали
+    }
+
+    widget.onMapReady?.call();
+  }
+
+  void _moveCamera(LatLng ll) {
+    _mapWindow?.map.move(
+      ymk.CameraPosition(
+        ll.toYandex(),
+        zoom: AppConstants.defaultZoom,
+        azimuth: 0,
+        tilt: 0,
       ),
-      animation: const MapAnimation(type: MapAnimationType.smooth, duration: 0.3),
+      animation: const ymk.Animation(type: ymk.AnimationType.Smooth, duration: 0.3),
     );
   }
 
-  void _fitTrack(YandexMapController c, List<LatLng> pts) {
-    if (pts.length < 2) return;
+  void _fitTrack(List<LatLng> pts) {
+    if (pts.length < 2 || _mapWindow == null) return;
     double minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
     for (final p in pts) {
       if (p.latitude < minLat) minLat = p.latitude;
@@ -99,108 +154,106 @@ class _TrackMapWidgetState extends ConsumerState<TrackMapWidget> {
       if (p.longitude < minLng) minLng = p.longitude;
       if (p.longitude > maxLng) maxLng = p.longitude;
     }
-    c.moveCamera(
-      CameraUpdate.newGeometry(Geometry.fromBoundingBox(BoundingBox(
-        southWest: LatLng(minLat, minLng).toYandex(),
-        northEast: LatLng(maxLat, maxLng).toYandex(),
-      ))),
-      animation: const MapAnimation(type: MapAnimationType.smooth, duration: 0.5),
+    final bbox = ymk.BoundingBox(
+      LatLng(minLat, minLng).toYandex(),
+      LatLng(maxLat, maxLng).toYandex(),
     );
+    final camera = _mapWindow!.map
+        .cameraPositionForGeometry(ymk.Geometry.fromBoundingBox(bbox));
+    _mapWindow!.map.move(
+      camera,
+      animation: const ymk.Animation(type: ymk.AnimationType.Smooth, duration: 0.5),
+    );
+  }
+
+  void _rebuildTrackLine() {
+    final col = _trackCol;
+    if (col == null) return;
+    final pts = widget.session.points.map((p) => p.position.toYandex()).toList();
+    // Убираем старую линию, чтобы обновить геометрию без визуальных артефактов.
+    if (_trackLine != null) {
+      col.remove(_trackLine!);
+      _trackLine = null;
+    }
+    if (pts.length < 2) return;
+
+    final scheme = Theme.of(context).colorScheme;
+    _trackLine = col.addPolyline(ymk.Polyline(pts))
+      ..strokeWidth = 4.0
+      ..setStrokeColor(scheme.primary)
+      ..outlineWidth = 1.5
+      ..outlineColor = scheme.primary.withValues(alpha: 0.3);
+  }
+
+  void _rebuildMarkers() {
+    final col = _markersCol;
+    if (col == null || !_iconsReady) return;
+
+    col.clear();
+    _startMark = null;
+    _currentMark = null;
+
+    final points = widget.session.points.map((p) => p.position).toList();
+
+    if (points.isNotEmpty) {
+      _startMark = col.addPlacemarkWithPoint(points.first.toYandex())
+        ..setIconWithStyle(_startIcon!, const ymk.IconStyle(scale: 0.7));
+    }
+
+    if (widget.currentPosition != null) {
+      _currentMark = col.addPlacemarkWithPoint(widget.currentPosition!.toYandex())
+        ..setIconWithStyle(_currentPosIcon!, const ymk.IconStyle(scale: 0.8));
+    }
+
+    // POI-слой
+    final pois = ref.read(poisProvider).value ?? const <Poi>[];
+    for (final poi in pois) {
+      final icon = _poiIcons[poi.type];
+      if (icon == null) continue;
+      col.addPlacemarkWithPoint(poi.position.toYandex())
+        ..setIconWithStyle(icon, const ymk.IconStyle(scale: 0.8))
+        ..addTapListener(_TapListener(onTap: () => _showPoiSnack(context, poi)));
+    }
+
+    // Фото-маркеры
+    for (final photo in widget.session.photos) {
+      col.addPlacemarkWithPoint(photo.position.toYandex())
+        ..setIconWithStyle(_cameraIcon!, const ymk.IconStyle(scale: 0.8))
+        ..addTapListener(_TapListener(onTap: () {
+          widget.onMarkerTap?.call(photo);
+          _showPhotoPreview(context, photo);
+        }));
+    }
+  }
+
+  void _updateCurrentMark() {
+    final col = _markersCol;
+    final icon = _currentPosIcon;
+    if (col == null || icon == null) return;
+    final pos = widget.currentPosition;
+    if (pos == null) {
+      if (_currentMark != null) {
+        col.remove(_currentMark!);
+        _currentMark = null;
+      }
+      return;
+    }
+    if (_currentMark == null) {
+      _currentMark = col.addPlacemarkWithPoint(pos.toYandex())
+        ..setIconWithStyle(icon, const ymk.IconStyle(scale: 0.8));
+    } else {
+      _currentMark!.geometry = pos.toYandex();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final points = widget.session.points.map((p) => p.position).toList();
-    final poisAsync = ref.watch(poisProvider);
-
-    final mapObjects = <MapObject>[
-      // Трек — отображается сразу, не требует иконок
-      if (points.length > 1)
-        PolylineMapObject(
-          mapId: const MapObjectId('track'),
-          polyline: Polyline(points: points.map((p) => p.toYandex()).toList()),
-          strokeColor: colorScheme.primary,
-          strokeWidth: 4.0,
-          outlineColor: colorScheme.primary.withOpacity(0.3),
-          outlineWidth: 1.5,
-        ),
-
-      // Точечные маркеры — после загрузки bitmap
-      if (_iconsReady) ...[
-        if (points.isNotEmpty)
-          PlacemarkMapObject(
-            mapId: const MapObjectId('start'),
-            point: points.first.toYandex(),
-            icon: PlacemarkIcon.single(
-              PlacemarkIconStyle(image: _startIcon!, scale: 0.7),
-            ),
-          ),
-
-        if (widget.currentPosition != null)
-          PlacemarkMapObject(
-            mapId: const MapObjectId('current_pos'),
-            point: widget.currentPosition!.toYandex(),
-            icon: PlacemarkIcon.single(
-              PlacemarkIconStyle(image: _currentPosIcon!, scale: 0.8),
-            ),
-          ),
-
-        // POI-слой — всегда виден на карте
-        ...poisAsync.whenOrNull(
-              data: (pois) => pois
-                  .map((poi) => PlacemarkMapObject(
-                        mapId: MapObjectId('poi_${poi.id}'),
-                        point: poi.position.toYandex(),
-                        icon: PlacemarkIcon.single(PlacemarkIconStyle(
-                          image: _poiIcons[poi.type]!,
-                          scale: 0.8,
-                        )),
-                        onTap: (_, __) => _showPoiSnack(context, poi),
-                      ))
-                  .toList(),
-            ) ??
-            [],
-
-        // Фото-маркеры
-        ...widget.session.photos.map(
-          (photo) => PlacemarkMapObject(
-            mapId: MapObjectId('photo_${photo.filePath.hashCode}'),
-            point: photo.position.toYandex(),
-            icon: PlacemarkIcon.single(
-              PlacemarkIconStyle(image: _cameraIcon!, scale: 0.8),
-            ),
-            onTap: (_, __) {
-              widget.onMarkerTap?.call(photo);
-              _showPhotoPreview(context, photo);
-            },
-          ),
-        ),
-      ],
-    ];
+    // Реагируем на изменения POI в реестре — перерисуем маркеры.
+    ref.listen(poisProvider, (_, __) => _rebuildMarkers());
 
     return AbsorbPointer(
       absorbing: !widget.interactive,
-      child: YandexMap(
-        nightModeEnabled: isDark,
-        mapType: MapType.map,
-        onMapCreated: (c) {
-          _mapController = c;
-          widget.onMapReady?.call();
-          if (points.length > 1) {
-            _fitTrack(c, points);
-          } else if (widget.currentPosition != null) {
-            _moveCamera(c, widget.currentPosition!);
-          }
-        },
-        mapObjects: mapObjects,
-        onCameraPositionChanged: (_, reason, __) {
-          if (reason == CameraUpdateReason.gestures) {
-            widget.onManualPan?.call();
-          }
-        },
-      ),
+      child: LifecycleYandexMap(onMapCreated: _onMapCreated),
     );
   }
 
@@ -253,5 +306,31 @@ class _TrackMapWidgetState extends ConsumerState<TrackMapWidget> {
         ),
       ),
     );
+  }
+}
+
+class _CameraListenerImpl extends ymk.MapCameraListener {
+  _CameraListenerImpl({required this.onReason});
+  final void Function(ymk.CameraUpdateReason) onReason;
+
+  @override
+  void onCameraPositionChanged(
+    ymk.Map map,
+    ymk.CameraPosition cameraPosition,
+    ymk.CameraUpdateReason cameraUpdateReason,
+    bool finished,
+  ) {
+    onReason(cameraUpdateReason);
+  }
+}
+
+class _TapListener extends ymk.MapObjectTapListener {
+  _TapListener({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  bool onMapObjectTap(ymk.MapObject mapObject, ymk.Point point) {
+    onTap();
+    return true;
   }
 }

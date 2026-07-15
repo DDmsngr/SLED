@@ -4,7 +4,7 @@ version: 1.2.0+3
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
-  flutter: ">=3.27.0"
+  flutter: ">=3.29.0"
 
 dependencies:
   flutter:
@@ -13,7 +13,9 @@ dependencies:
   flutter_riverpod: ^2.5.1
   equatable: ^2.0.5
 
-  yandex_mapkit: ^4.2.1
+  # Официальный плагин от Яндекса (пришёл на смену брошенному community
+  # yandex_mapkit 4.2.1, который несовместим с новыми Native SDK 4.4x).
+  yandex_maps_mapkit: ^4.41.0
   latlong2: ^0.9.1
 
   geolocator: ^12.0.0

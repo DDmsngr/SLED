@@ -12,8 +12,11 @@
 # Keep enums
 -keepclassmembers enum * { *; }
 
-# Yandex MapKit
+# Yandex MapKit (native SDK + новый Flutter-плагин)
 -keep class com.yandex.** { *; }
+-keep class com.yandex.maps.** { *; }
+-keep class com.yandex.mapkit.** { *; }
+-keep class com.yandex.runtime.** { *; }
 -dontwarn com.yandex.**
 
 # Play Core (referenced by Flutter embedding, not used directly)

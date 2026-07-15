@@ -3,7 +3,6 @@ package com.example.sled
 import android.content.pm.PackageManager
 import android.content.pm.Signature
 import android.os.Build
-import com.yandex.mapkit.MapKitFactory
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -11,54 +10,26 @@ import java.security.MessageDigest
 
 class MainActivity : FlutterActivity() {
 
-    override fun onStart() {
-        super.onStart()
-        try { MapKitFactory.getInstance().onStart() } catch (_: Exception) {}
-    }
-
-    override fun onStop() {
-        super.onStop()
-        try { MapKitFactory.getInstance().onStop() } catch (_: Exception) {}
-    }
-
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // MethodChannel остался для Dev Mode. Ключ MapKit и init теперь
+        // управляются из Dart (см. lib/main.dart и MapkitInit.status),
+        // поэтому большинство методов возвращают заглушки.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "sled/config")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "getYandexKeyPrefix" -> {
-                        try {
-                            val ai = packageManager.getApplicationInfo(
-                                packageName, PackageManager.GET_META_DATA
-                            )
-                            val key = ai.metaData
-                                ?.getString("com.yandex.android.sdk.MAPKIT_API_KEY")
-                                ?: "null"
-                            result.success(if (key.length >= 8) key.substring(0, 8) else key)
-                        } catch (e: Exception) {
-                            result.success("error:${e.message?.take(40)}")
-                        }
-                    }
-
-                    "getMapKitInitStatus" -> result.success(MainApplication.mapKitInitStatus)
-
-                    "getAppSha1" -> result.success(appSha1())
-
-                    "getAppPackage" -> result.success(packageName)
-
-                    "getMapKitVersion" -> {
-                        // Версия зафиксирована в android/app/build.gradle
-                        // (implementation "com.yandex.android:maps.mobile:4.22.0-full")
-                        result.success("4.22.0-full")
-                    }
-
-                    else -> result.notImplemented()
+                    "getYandexKeyPrefix"   -> result.success("in_dart_define")
+                    "getMapKitInitStatus"  -> result.success("moved_to_dart")
+                    "getMapKitVersion"     -> result.success("4.41.0-official")
+                    "getAppSha1"           -> result.success(appSha1())
+                    "getAppPackage"        -> result.success(packageName)
+                    else                   -> result.notImplemented()
                 }
             }
     }
 
-    /** SHA-1 подписи APK — сравниваем с тем, что зарегистрирован в кабинете Yandex. */
+    /** SHA-1 подписи APK — для регистрации в кабинете Yandex/Google. */
     private fun appSha1(): String = try {
         val signatures: Array<Signature> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val info = packageManager.getPackageInfo(

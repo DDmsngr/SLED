@@ -13,10 +13,11 @@ if (localPropertiesFile.exists()) {
 }
 def flutterVersionCode = localProperties.getProperty('flutter.versionCode') ?: '1'
 def flutterVersionName = localProperties.getProperty('flutter.versionName') ?: '1.0'
-def yandexMapkitApiKey = System.getenv('YANDEX_MAPKIT_API_KEY') ?:
-    localProperties.getProperty('yandexMapkitApiKey') ?: 'test_api_key'
-def keyPrefix = yandexMapkitApiKey.length() > 8 ? yandexMapkitApiKey[0..7] : yandexMapkitApiKey
-logger.lifecycle(">>> SLED: yandexMapkitApiKey prefix = ${keyPrefix}...")
+// Ключ Yandex MapKit больше не читается тут — он передаётся напрямую в Dart
+// через --dart-define=YANDEX_MAPKIT_API_KEY=... (см. .github/workflows/flutter_ci.yml
+// и lib/main.dart). Раньше нужно было прокидывать через manifestPlaceholder
+// для meta-data в AndroidManifest, но новый плагин yandex_maps_mapkit
+// инициализируется из Dart.
 
 android {
     namespace "com.example.sled"
@@ -30,7 +31,6 @@ android {
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         ndk { abiFilters "armeabi-v7a", "arm64-v8a" }
-        manifestPlaceholders["yandexMapkitApiKey"] = yandexMapkitApiKey
     }
 
     compileOptions {
@@ -83,6 +83,8 @@ flutter { source "../.." }
 dependencies {
     implementation "androidx.appcompat:appcompat:1.6.1"
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.22"
-    // Required to call MapKitFactory from MainApplication (yandex_mapkit 4.2.1 wraps 4.22.0-full)
-    implementation "com.yandex.android:maps.mobile:4.22.0-full"
+    // Native Yandex MapKit SDK подтягивается автоматически транзитивно
+    // через Flutter-плагин yandex_maps_mapkit. Раньше нужно было явно указывать
+    // com.yandex.android:maps.mobile:4.22.0-full, потому что старый плагин
+    // yandex_mapkit не декларировал зависимость.
 }

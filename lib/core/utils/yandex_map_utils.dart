@@ -3,38 +3,44 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:yandex_mapkit/yandex_mapkit.dart';
+import 'package:yandex_maps_mapkit/image.dart' as ymk_image;
+import 'package:yandex_maps_mapkit/mapkit.dart' as ymk;
+
+// ── LatLng ⇄ Yandex Point ────────────────────────────────────────────────────
 
 extension LatLngExt on LatLng {
-  Point toYandex() => Point(latitude: latitude, longitude: longitude);
+  ymk.Point toYandex() => ymk.Point(latitude: latitude, longitude: longitude);
 }
 
-extension YandexPointExt on Point {
+extension YandexPointExt on ymk.Point {
   LatLng toLatLng() => LatLng(latitude, longitude);
 }
 
-// ── Bitmap cache: key → PNG bytes ────────────────────────────────────────────
-final Map<String, Uint8List> _bitmapCache = {};
+// ── Bitmap cache: key → ImageProvider ────────────────────────────────────────
+// Кэшируем сгенерированные PNG-байты и обёрнутые в ImageProvider, чтобы не
+// перерисовывать одну и ту же иконку каждый раз при обновлении карты.
+final Map<String, Uint8List> _bytesCache = {};
 
-Future<BitmapDescriptor> buildCircleMarker(
+Future<ymk_image.ImageProvider> buildCircleMarker(
   Color color, {
   double size = 48,
 }) async {
-  final key = 'circle_${color.value.toRadixString(16)}_$size';
-  final cached = _bitmapCache[key];
-  if (cached != null) return BitmapDescriptor.fromBytes(cached);
-  final bytes = await _renderCircle(color, size);
-  _bitmapCache[key] = bytes;
-  return BitmapDescriptor.fromBytes(bytes);
+  final key = 'circle_${color.toARGB32().toRadixString(16)}_$size';
+  final bytes = _bytesCache[key] ??= await _renderCircle(color, size);
+  return ymk_image.ImageProvider.fromImageProvider(
+    MemoryImage(bytes),
+    id: key,
+  );
 }
 
-Future<BitmapDescriptor> buildEmojiMarker(String emoji, {double size = 48}) async {
+Future<ymk_image.ImageProvider> buildEmojiMarker(String emoji,
+    {double size = 48}) async {
   final key = 'emoji_${emoji}_$size';
-  final cached = _bitmapCache[key];
-  if (cached != null) return BitmapDescriptor.fromBytes(cached);
-  final bytes = await _renderEmojiCircle(emoji, size);
-  _bitmapCache[key] = bytes;
-  return BitmapDescriptor.fromBytes(bytes);
+  final bytes = _bytesCache[key] ??= await _renderEmojiCircle(emoji, size);
+  return ymk_image.ImageProvider.fromImageProvider(
+    MemoryImage(bytes),
+    id: key,
+  );
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
@@ -49,7 +55,7 @@ Future<Uint8List> _renderCircle(Color color, double size) async {
     Offset(r, r + 1.5),
     r - 2,
     Paint()
-      ..color = Colors.black.withOpacity(0.25)
+      ..color = Colors.black.withValues(alpha: 0.25)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
   );
   // White ring
@@ -72,7 +78,7 @@ Future<Uint8List> _renderEmojiCircle(String emoji, double size) async {
     Offset(r, r + 1),
     r - 1,
     Paint()
-      ..color = Colors.black.withOpacity(0.2)
+      ..color = Colors.black.withValues(alpha: 0.2)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2),
   );
   // White circle
@@ -82,7 +88,7 @@ Future<Uint8List> _renderEmojiCircle(String emoji, double size) async {
     Offset(r, r),
     r - 1,
     Paint()
-      ..color = Colors.black.withOpacity(0.08)
+      ..color = Colors.black.withValues(alpha: 0.08)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1,
   );

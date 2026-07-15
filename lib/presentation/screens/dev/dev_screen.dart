@@ -59,7 +59,7 @@ class DevScreen extends ConsumerWidget {
               final isTest = prefix == 'test_api' || prefix.startsWith('test');
               final initOk = initStatus.startsWith('ok:');
               return _Section(title: 'Конфигурация', children: [
-                _Row('Yandex key (manifest)',
+                _Row('Yandex key (dart-define)',
                     '$prefix... ${isTest ? '⚠️ TEST KEY' : '✅ real key'}'),
                 _Row('MapKit init',
                     '$initStatus ${initOk ? '✅' : '❌'}'),

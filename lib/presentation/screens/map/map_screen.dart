@@ -6,16 +6,18 @@ import 'package:gap/gap.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:yandex_mapkit/yandex_mapkit.dart';
+import 'package:yandex_maps_mapkit/image.dart' as ymk_image;
+import 'package:yandex_maps_mapkit/mapkit.dart' as ymk;
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/services/app_logger.dart';
-import '../../../core/services/native_config.dart';
+import '../../../core/services/mapkit_init.dart';
 import '../../../core/utils/yandex_map_utils.dart';
 import '../../../domain/entities/poi.dart';
 import '../../../domain/entities/poi_type.dart';
 import '../../providers/map_filter_provider.dart';
 import '../../providers/poi_provider.dart';
+import '../../widgets/lifecycle_yandex_map.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
@@ -25,14 +27,19 @@ class MapScreen extends ConsumerStatefulWidget {
 }
 
 class _MapScreenState extends ConsumerState<MapScreen> {
-  YandexMapController? _mapCtrl;
+  ymk.MapWindow? _mapWindow;
+  ymk.MapObjectCollection? _currentPosCollection;
+  ymk.MapObjectCollection? _poiCollection;
+  ymk.PlacemarkMapObject? _currentPosMark;
+
+  final Map<int, ymk.PlacemarkMapObject> _poiMarks = {}; // poi.id → mark
+  final Map<PoiType, ymk_image.ImageProvider> _poiIcons = {};
+
+  ymk_image.ImageProvider? _currentPosIcon;
+
   LatLng? _currentPos;
   bool _followUser = true;
   StreamSubscription<Position>? _posSub;
-
-  BitmapDescriptor? _currentPosIcon;
-  final Map<PoiType, BitmapDescriptor> _poiIcons = {};
-  bool _iconsReady = false;
 
   // Map status tracking
   bool _mapCreated = false;
@@ -41,16 +48,29 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Timer? _timeoutTimer;
   bool _firstGpsFix = false;
 
+  late final ymk.MapCameraListener _cameraListener;
+
   @override
   void initState() {
     super.initState();
-    NativeConfig.mapKitInitStatus().then(
-      (s) => AppLogger.log('MapScreen', 'MapKit init: $s'),
-    );
+    AppLogger.log('MapScreen', 'MapKit init: ${MapkitInit.status}');
     _loadIcons();
     _checkPermissionAndStart();
 
-    // Если через 20 сек карта не стала интерактивной — показываем предупреждение
+    _cameraListener = _CameraListenerImpl(onCamera: (reason) {
+      if (!_mapInteractive && mounted) {
+        AppLogger.log('Map', 'first camera event (reason=$reason) → tiles loading');
+        setState(() {
+          _mapInteractive = true;
+          _showTimeoutWarning = false;
+        });
+      }
+      if (reason == ymk.CameraUpdateReason.Gestures) {
+        if (_followUser && mounted) setState(() => _followUser = false);
+      }
+    });
+
+    // Если через 20 сек камера не заработала — показываем предупреждение
     _timeoutTimer = Timer(const Duration(seconds: 20), () {
       if (!_mapInteractive && mounted) {
         AppLogger.log('MapScreen', 'TIMEOUT: карта не загрузилась за 20 сек');
@@ -63,6 +83,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   void dispose() {
     _posSub?.cancel();
     _timeoutTimer?.cancel();
+    _mapWindow?.map.removeCameraListener(_cameraListener);
     super.dispose();
   }
 
@@ -73,7 +94,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       _poiIcons[t] = await buildEmojiMarker(t.emoji);
     }
     AppLogger.log('MapScreen', 'loadIcons done');
-    if (mounted) setState(() => _iconsReady = true);
+    if (!mounted) return;
+    _refreshCurrentPosMarker();
+    _refreshPoiMarkers(ref.read(poisProvider).value ?? const []);
   }
 
   Future<void> _checkPermissionAndStart() async {
@@ -108,50 +131,98 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             'first GPS fix: ${ll.latitude.toStringAsFixed(5)}, ${ll.longitude.toStringAsFixed(5)} '
             'acc=${pos.accuracy.toStringAsFixed(0)}m');
       }
-      setState(() => _currentPos = ll);
+      _currentPos = ll;
+      _refreshCurrentPosMarker();
       if (_followUser) {
-        _mapCtrl?.moveCamera(
-          CameraUpdate.newCameraPosition(
-            CameraPosition(target: ll.toYandex(), zoom: AppConstants.defaultZoom),
-          ),
-        );
+        _moveCameraTo(ll);
       }
     }, onError: (e) {
       AppLogger.log('MapScreen', 'GPS stream error: $e');
     });
   }
 
+  void _onMapCreated(ymk.MapWindow window) {
+    _mapWindow = window;
+    _mapCreated = true;
+    AppLogger.log('Map', 'onMapCreated OK');
+
+    // Отдельные коллекции: текущая позиция и POI. Треки в этом экране не рисуем
+    // (для треков есть TrackMapWidget).
+    _currentPosCollection = window.map.mapObjects.addCollection();
+    _poiCollection = window.map.mapObjects.addCollection();
+
+    window.map.addCameraListener(_cameraListener);
+
+    // Стартовая позиция камеры: либо текущая, либо fallback на центр РФ.
+    // Fallback нужен чтобы тайлы начали грузиться даже без GPS.
+    final start = _currentPos ?? const LatLng(55.7558, 37.6173); // Москва
+    _moveCameraTo(start);
+
+    _refreshCurrentPosMarker();
+    _refreshPoiMarkers(ref.read(poisProvider).value ?? const []);
+
+    if (mounted) setState(() {});
+  }
+
+  void _moveCameraTo(LatLng ll) {
+    _mapWindow?.map.move(
+      ymk.CameraPosition(
+        ll.toYandex(),
+        zoom: AppConstants.defaultZoom,
+        azimuth: 0,
+        tilt: 0,
+      ),
+    );
+  }
+
+  void _refreshCurrentPosMarker() {
+    final col = _currentPosCollection;
+    final icon = _currentPosIcon;
+    final pos = _currentPos;
+    if (col == null || icon == null || pos == null) return;
+
+    if (_currentPosMark == null) {
+      _currentPosMark = col.addPlacemarkWithPoint(pos.toYandex())
+        ..setIcon(icon)
+        ..setIconStyle(const ymk.IconStyle(scale: 0.8));
+    } else {
+      _currentPosMark!.geometry = pos.toYandex();
+    }
+  }
+
+  void _refreshPoiMarkers(List<Poi> pois) {
+    final col = _poiCollection;
+    if (col == null) return;
+
+    // Простейший подход: очистить и пересобрать. Для сотен POI можно
+    // оптимизировать через diff, пока не нужно.
+    col.clear();
+    _poiMarks.clear();
+
+    for (final poi in pois) {
+      final icon = _poiIcons[poi.type];
+      if (icon == null) continue;
+      final mark = col.addPlacemarkWithPoint(poi.position.toYandex())
+        ..setIcon(icon)
+        ..setIconStyle(const ymk.IconStyle(scale: 0.8))
+        ..userData = poi.id
+        ..addTapListener(_PoiTapListener(
+          onTap: () => _showPoiDetail(context, poi),
+        ));
+      _poiMarks[poi.id] = mark;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final poisAsync = ref.watch(poisProvider);
+    // Подписываемся на POI — при изменениях перерисовываем маркеры императивно.
+    ref.listen(poisProvider, (_, next) {
+      final list = next.value ?? const <Poi>[];
+      _refreshPoiMarkers(list);
+    });
+
     final filter = ref.watch(mapFilterProvider);
     final theme = Theme.of(context);
-
-    final mapObjects = <MapObject>[
-      if (_iconsReady && _currentPos != null)
-        PlacemarkMapObject(
-          mapId: const MapObjectId('current_pos'),
-          point: _currentPos!.toYandex(),
-          icon: PlacemarkIcon.single(
-            PlacemarkIconStyle(image: _currentPosIcon!, scale: 0.8),
-          ),
-        ),
-      if (_iconsReady)
-        ...poisAsync.whenOrNull(
-              data: (pois) => pois
-                  .map((poi) => PlacemarkMapObject(
-                        mapId: MapObjectId('poi_${poi.id}'),
-                        point: poi.position.toYandex(),
-                        icon: PlacemarkIcon.single(PlacemarkIconStyle(
-                          image: _poiIcons[poi.type]!,
-                          scale: 0.8,
-                        )),
-                        onTap: (_, __) => _showPoiDetail(context, poi),
-                      ))
-                  .toList(),
-            ) ??
-            [],
-    ];
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -183,41 +254,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       ),
       body: Stack(
         children: [
-          YandexMap(
-            // ДИАГНОСТИКА КАРТ: временно принудительно false. yandex_mapkit 4.2.1
-            // имеет известный баг, когда nightMode=true рендерит только служебный
-            // слой без базовых тайлов. Если после этого фикса карта покажется →
-            // причина в nightMode, вернём условно с воркараундом.
-            nightModeEnabled: false,
-            mapType: MapType.map,
-            onMapCreated: (c) {
-              _mapCtrl = c;
-              _mapCreated = true;
-              AppLogger.log('Map', 'onMapCreated OK');
-              if (_currentPos != null) {
-                c.moveCamera(CameraUpdate.newCameraPosition(
-                  CameraPosition(
-                    target: _currentPos!.toYandex(),
-                    zoom: AppConstants.defaultZoom,
-                  ),
-                ));
-              }
-            },
-            mapObjects: mapObjects,
-            onCameraPositionChanged: (position, reason, finished) {
-              if (!_mapInteractive) {
-                AppLogger.log('Map',
-                    'first camera event (reason=$reason) → tiles loading');
-                setState(() {
-                  _mapInteractive = true;
-                  _showTimeoutWarning = false;
-                });
-              }
-              if (reason == CameraUpdateReason.gestures) {
-                setState(() => _followUser = false);
-              }
-            },
-          ),
+          LifecycleYandexMap(onMapCreated: _onMapCreated),
 
           // ── Оверлей: карта грузится ───────────────────────────────────
           if (!_mapInteractive)
@@ -232,9 +269,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          CircularProgressIndicator(
-                            color: Color(0xFF00E5CC),
-                          ),
+                          CircularProgressIndicator(color: Color(0xFF00E5CC)),
                           Gap(16),
                           Text('Загружаем карту...',
                               style: TextStyle(color: Colors.white)),
@@ -287,12 +322,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 heroTag: 'recenter',
                 onPressed: () {
                   setState(() => _followUser = true);
-                  _mapCtrl?.moveCamera(CameraUpdate.newCameraPosition(
-                    CameraPosition(
-                      target: _currentPos!.toYandex(),
-                      zoom: AppConstants.defaultZoom,
-                    ),
-                  ));
+                  _moveCameraTo(_currentPos!);
                 },
                 backgroundColor: theme.colorScheme.surface,
                 child: Icon(Icons.my_location, color: theme.colorScheme.primary),
@@ -364,6 +394,34 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ],
       ),
     );
+  }
+}
+
+/// Импл ymk.MapCameraListener — принимает колбэк для удобства.
+class _CameraListenerImpl extends ymk.MapCameraListener {
+  _CameraListenerImpl({required this.onCamera});
+  final void Function(ymk.CameraUpdateReason reason) onCamera;
+
+  @override
+  void onCameraPositionChanged(
+    ymk.Map map,
+    ymk.CameraPosition cameraPosition,
+    ymk.CameraUpdateReason cameraUpdateReason,
+    bool finished,
+  ) {
+    onCamera(cameraUpdateReason);
+  }
+}
+
+/// Импл ymk.MapObjectTapListener — принимает колбэк, возвращает true всегда.
+class _PoiTapListener extends ymk.MapObjectTapListener {
+  _PoiTapListener({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  bool onMapObjectTap(ymk.MapObject mapObject, ymk.Point point) {
+    onTap();
+    return true;
   }
 }
 
