@@ -32,7 +32,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   ymk.MapObjectCollection? _poiCollection;
   ymk.PlacemarkMapObject? _currentPosMark;
 
-  final Map<int, ymk.PlacemarkMapObject> _poiMarks = {}; // poi.id → mark
   final Map<PoiType, ymk_image.ImageProvider> _poiIcons = {};
 
   ymk_image.ImageProvider? _currentPosIcon;
@@ -197,19 +196,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     // Простейший подход: очистить и пересобрать. Для сотен POI можно
     // оптимизировать через diff, пока не нужно.
     col.clear();
-    _poiMarks.clear();
 
     for (final poi in pois) {
       final icon = _poiIcons[poi.type];
       if (icon == null) continue;
-      final mark = col.addPlacemarkWithPoint(poi.position.toYandex())
-        ..setIcon(icon)
-        ..setIconStyle(const ymk.IconStyle(scale: 0.8))
+      col.addPlacemarkWithPoint(poi.position.toYandex())
+        ..setIconWithStyle(icon, const ymk.IconStyle(scale: 0.8))
         ..userData = poi.id
         ..addTapListener(_PoiTapListener(
           onTap: () => _showPoiDetail(context, poi),
         ));
-      _poiMarks[poi.id] = mark;
     }
   }
 

@@ -48,7 +48,6 @@ class _TrackMapWidgetState extends ConsumerState<TrackMapWidget> {
   ymk.MapObjectCollection? _markersCol;
 
   ymk.PolylineMapObject? _trackLine;
-  ymk.PlacemarkMapObject? _startMark;
   ymk.PlacemarkMapObject? _currentMark;
 
   ymk_image.ImageProvider? _currentPosIcon;
@@ -178,11 +177,13 @@ class _TrackMapWidgetState extends ConsumerState<TrackMapWidget> {
     if (pts.length < 2) return;
 
     final scheme = Theme.of(context).colorScheme;
-    _trackLine = col.addPolyline(ymk.Polyline(pts))
-      ..strokeWidth = 4.0
-      ..setStrokeColor(scheme.primary)
-      ..outlineWidth = 1.5
-      ..outlineColor = scheme.primary.withValues(alpha: 0.3);
+    _trackLine = col.addPolylineWithGeometry(ymk.Polyline(pts))
+      ..style = ymk.LineStyle(
+        strokeWidth: 4.0,
+        outlineWidth: 1.5,
+        outlineColor: scheme.primary.withValues(alpha: 0.3),
+      )
+      ..setStrokeColor(scheme.primary);
   }
 
   void _rebuildMarkers() {
@@ -190,13 +191,12 @@ class _TrackMapWidgetState extends ConsumerState<TrackMapWidget> {
     if (col == null || !_iconsReady) return;
 
     col.clear();
-    _startMark = null;
     _currentMark = null;
 
     final points = widget.session.points.map((p) => p.position).toList();
 
     if (points.isNotEmpty) {
-      _startMark = col.addPlacemarkWithPoint(points.first.toYandex())
+      col.addPlacemarkWithPoint(points.first.toYandex())
         ..setIconWithStyle(_startIcon!, const ymk.IconStyle(scale: 0.7));
     }
 
