@@ -2,7 +2,9 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
-import 'package:latlong2/latlong.dart';
+// Импортируем только LatLng: latlong2 экспортирует свой Path (полилиния
+// для навигации), который затеняет dart:ui.Path и ломает CustomPainter.
+import 'package:latlong2/latlong.dart' show LatLng;
 
 import '../../core/utils/date_formatter.dart';
 import '../../domain/entities/track_session.dart';

@@ -197,7 +197,7 @@ class _TrackMapWidgetState extends ConsumerState<TrackMapWidget> {
 
     if (points.isNotEmpty) {
       col.addPlacemarkWithPoint(points.first.toYandex())
-        ..setIconWithStyle(_startIcon!, const ymk.IconStyle(scale: 0.7));
+          .setIconWithStyle(_startIcon!, const ymk.IconStyle(scale: 0.7));
     }
 
     if (widget.currentPosition != null) {
